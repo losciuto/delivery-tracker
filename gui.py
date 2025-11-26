@@ -202,6 +202,7 @@ class MainWindow(QMainWindow):
         btn.clicked.connect(slot)
         btn.setFixedHeight(40)
         btn.setIconSize(QSize(24, 24))
+        btn.setToolTip(text)
         self.sidebar_buttons.append((btn, text))
         return btn
 
@@ -226,7 +227,7 @@ class MainWindow(QMainWindow):
     def show_about(self):
         msg = (
             "Scadenziario Consegne\n"
-            "Versione 1.1.0\n"
+            "Versione 1.1.1\n"
             f"Data: {date.today().strftime('%d/%m/%Y')}\n\n"
             "Autore: Massimo Lo Sciuto\n"
             "Supporto: Antigravity\n"
@@ -270,6 +271,12 @@ class MainWindow(QMainWindow):
             self.table.setItem(row, 3, QTableWidgetItem(order.get('seller', '')))
             self.table.setItem(row, 4, QTableWidgetItem(order.get('destination', '')))
             self.table.setItem(row, 5, QTableWidgetItem(order['description']))
+
+            # Add tooltips to all items
+            for col in range(6): # Columns 0-5
+                item = self.table.item(row, col)
+                if item:
+                    item.setToolTip(item.text())
             
             link_item = QTableWidgetItem(order['link'])
             if order['link']:
@@ -286,6 +293,12 @@ class MainWindow(QMainWindow):
             self.table.setItem(row, 9, delivered_item)
             
             self.table.setItem(row, 10, QTableWidgetItem(order['notes']))
+
+            # Add tooltips to remaining items
+            for col in range(6, 11):
+                item = self.table.item(row, col)
+                if item:
+                    item.setToolTip(item.text())
 
             # Alarm Logic
             if not order['is_delivered'] and order['alarm_enabled']:

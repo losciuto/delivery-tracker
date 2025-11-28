@@ -24,9 +24,15 @@ def init_db():
             estimated_delivery TEXT,
             alarm_enabled BOOLEAN DEFAULT 0,
             is_delivered BOOLEAN DEFAULT 0,
+            position TEXT,
             notes TEXT
         )
     ''')
+    # Add position column if it doesn't exist (for existing databases)
+    cursor.execute("PRAGMA table_info(orders)")
+    columns = [column[1] for column in cursor.fetchall()]
+    if 'position' not in columns:
+        cursor.execute('ALTER TABLE orders ADD COLUMN position TEXT')
     conn.commit()
     conn.close()
 
@@ -34,8 +40,8 @@ def add_order(order_data):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT INTO orders (order_date, platform, seller, destination, description, link, quantity, estimated_delivery, alarm_enabled, is_delivered, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO orders (order_date, platform, seller, destination, description, link, quantity, estimated_delivery, alarm_enabled, is_delivered, position, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         order_data['order_date'],
         order_data['platform'],
@@ -47,6 +53,7 @@ def add_order(order_data):
         order_data.get('estimated_delivery', ''),
         order_data.get('alarm_enabled', False),
         order_data.get('is_delivered', False),
+        order_data.get('position', ''),
         order_data.get('notes', '')
     ))
     conn.commit()
@@ -73,6 +80,7 @@ def update_order(order_id, order_data):
             estimated_delivery = ?,
             alarm_enabled = ?,
             is_delivered = ?,
+            position = ?,
             notes = ?
         WHERE id = ?
     ''', (
@@ -86,6 +94,7 @@ def update_order(order_id, order_data):
         order_data.get('estimated_delivery', ''),
         order_data.get('alarm_enabled', False),
         order_data.get('is_delivered', False),
+        order_data.get('position', ''),
         order_data.get('notes', ''),
         order_id
     ))

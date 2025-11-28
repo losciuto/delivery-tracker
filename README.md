@@ -12,8 +12,10 @@ Un'applicazione desktop in Python per gestire le scadenze delle consegne da dive
     - Link (cliccabile)
     - Quantità
     - Consegna Prevista
+    - Posizione (dove si trova il materiale)
     - Note (per difformità o difetti)
 - **Allarmi Visivi**:
+    - **Verde**: Materiale consegnato (evidenziazione intera riga).
     - **Rosso**: Consegna scaduta.
     - **Arancione**: Consegna prevista per oggi.
     - **Giallo**: Consegna in arrivo (entro 2 giorni).

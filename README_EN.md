@@ -12,8 +12,10 @@ A Python desktop application to manage delivery deadlines from various online pl
     - Link (clickable)
     - Quantity
     - Estimated Delivery
+    - Position (where the material is currently located)
     - Notes (for discrepancies or defects)
 - **Visual Alarms**:
+    - **Green**: Delivered material (entire row highlighted).
     - **Red**: Delivery overdue.
     - **Orange**: Delivery due today.
     - **Yellow**: Delivery arriving soon (within 2 days).

@@ -53,6 +53,9 @@ class OrderDialog(QDialog):
         self.destination_input = QLineEdit()
         delivery_layout.addRow("Destinazione:", self.destination_input)
         
+        self.position_input = QLineEdit()
+        delivery_layout.addRow("Posizione:", self.position_input)
+        
         self.order_date_input = QDateEdit()
         self.order_date_input.setCalendarPopup(True)
         self.order_date_input.setDate(QDate.currentDate())
@@ -115,6 +118,7 @@ class OrderDialog(QDialog):
             
         self.alarm_cb.setChecked(bool(self.order_data['alarm_enabled']))
         self.delivered_cb.setChecked(bool(self.order_data['is_delivered']))
+        self.position_input.setText(self.order_data.get('position', ''))
         self.notes_input.setText(self.order_data['notes'])
 
     def get_data(self):
@@ -129,6 +133,7 @@ class OrderDialog(QDialog):
             'estimated_delivery': self.est_delivery_input.date().toString('yyyy-MM-dd'),
             'alarm_enabled': self.alarm_cb.isChecked(),
             'is_delivered': self.delivered_cb.isChecked(),
+            'position': self.position_input.text(),
             'notes': self.notes_input.toPlainText()
         }
 
@@ -239,7 +244,7 @@ class MainWindow(QMainWindow):
         self.table = QTableWidget()
         self.table.setColumnCount(12)
         self.table.setHorizontalHeaderLabels([
-            "ID", "Data", "Piattaforma", "Venditore", "Destinazione", "Descrizione", "Link", "Q.tà", "Cons. Prevista", "Stato", "Consegnato", "Note"
+            "ID", "Data", "Piattaforma", "Venditore", "Destinazione", "Descrizione", "Link", "Q.tà", "Cons. Prevista", "Posizione", "Consegnato", "Note"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -289,10 +294,9 @@ class MainWindow(QMainWindow):
             self.table.setItem(row, 7, QTableWidgetItem(str(order['quantity'])))
             self.table.setItem(row, 8, QTableWidgetItem(order['estimated_delivery']))
             
-            # Add "Stato" column
-            status_text = "Consegnato" if order['is_delivered'] else "In attesa"
-            status_item = QTableWidgetItem(status_text)
-            self.table.setItem(row, 9, status_item)
+            # Add "Posizione" column
+            position_item = QTableWidgetItem(order.get('position', ''))
+            self.table.setItem(row, 9, position_item)
             
             delivered_item = QTableWidgetItem("Sì" if order['is_delivered'] else "No")
             self.table.setItem(row, 10, delivered_item)

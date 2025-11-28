@@ -237,9 +237,9 @@ class MainWindow(QMainWindow):
 
     def setup_table(self):
         self.table = QTableWidget()
-        self.table.setColumnCount(11)
+        self.table.setColumnCount(12)
         self.table.setHorizontalHeaderLabels([
-            "ID", "Data", "Piattaforma", "Venditore", "Destinazione", "Descrizione", "Link", "Q.tà", "Cons. Prevista", "Consegnato", "Note"
+            "ID", "Data", "Piattaforma", "Venditore", "Destinazione", "Descrizione", "Link", "Q.tà", "Cons. Prevista", "Stato", "Consegnato", "Note"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -289,19 +289,31 @@ class MainWindow(QMainWindow):
             self.table.setItem(row, 7, QTableWidgetItem(str(order['quantity'])))
             self.table.setItem(row, 8, QTableWidgetItem(order['estimated_delivery']))
             
-            delivered_item = QTableWidgetItem("Sì" if order['is_delivered'] else "No")
-            self.table.setItem(row, 9, delivered_item)
+            # Add "Stato" column
+            status_text = "Consegnato" if order['is_delivered'] else "In attesa"
+            status_item = QTableWidgetItem(status_text)
+            self.table.setItem(row, 9, status_item)
             
-            self.table.setItem(row, 10, QTableWidgetItem(order['notes']))
+            delivered_item = QTableWidgetItem("Sì" if order['is_delivered'] else "No")
+            self.table.setItem(row, 10, delivered_item)
+            
+            self.table.setItem(row, 11, QTableWidgetItem(order['notes']))
 
             # Add tooltips to remaining items
-            for col in range(6, 11):
+            for col in range(6, 12):
                 item = self.table.item(row, col)
                 if item:
                     item.setToolTip(item.text())
 
-            # Alarm Logic
-            if not order['is_delivered'] and order['alarm_enabled']:
+            # Color delivered items green
+            if order['is_delivered']:
+                green_color = QColor(200, 255, 200)  # Light green
+                for col in range(12):
+                    item = self.table.item(row, col)
+                    if item:
+                        item.setBackground(green_color)
+            # Alarm Logic for non-delivered items
+            elif order['alarm_enabled']:
                 est_date = datetime.strptime(order['estimated_delivery'], '%Y-%m-%d').date()
                 today = date.today()
                 
@@ -314,9 +326,10 @@ class MainWindow(QMainWindow):
                     color = QColor(255, 255, 200) # Upcoming - Yellow
                 
                 if color:
-                    for col in range(11):
+                    for col in range(12):
                         item = self.table.item(row, col)
-                        item.setBackground(color)
+                        if item:
+                            item.setBackground(color)
         
         self.table.setSortingEnabled(True)
 

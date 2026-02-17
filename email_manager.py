@@ -33,12 +33,14 @@ class EmailSyncManager:
             return None
             
         try:
-            logger.info(f"Connecting to {IMAP_SERVER}...")
+            logger.info(f"EMAIL-SYNC: Inizializzazione connessione SSL a {IMAP_SERVER}:{IMAP_PORT}...")
             mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
-            mail.login(self.email_addr, self.email_pass)
+            logger.info(f"EMAIL-SYNC: Connessione stabilita. Tentativo di login per {self.email_addr}...")
+            status, resp = mail.login(self.email_addr, self.email_pass)
+            logger.info(f"EMAIL-SYNC: Risposta login: {status} - {resp}")
             return mail
         except Exception as e:
-            logger.error(f"Email connection error: {e}")
+            logger.error(f"EMAIL-SYNC: Errore durante la connessione/login: {e}")
             return None
 
     def fetch_updates(self) -> List[Dict[str, Any]]:
@@ -52,24 +54,31 @@ class EmailSyncManager:
             
         updates = []
         try:
-            mail.select("INBOX")
+            logger.info("EMAIL-SYNC: Selezione cartella INBOX...")
+            status, count = mail.select("INBOX")
+            logger.info(f"EMAIL-SYNC: Stato select: {status} (Messaggi totali: {count[0].decode() if count[0] else '?'})")
+            
             # Search for unread emails or emails within last 7 days
-            # For simplicity, we search for specific keywords in subject
-            # Keywords: "spedito", "consegnato", "tracking", "delivery", "shipped"
             search_query = '(OR OR OR (SUBJECT "spedito") (SUBJECT "consegnato") (SUBJECT "tracking") (SUBJECT "delivery") (SUBJECT "shipped"))'
+            logger.info(f"EMAIL-SYNC: Esecuzione ricerca IMAP: {search_query}")
             
             status, messages = mail.search(None, search_query)
+            logger.info(f"EMAIL-SYNC: Stato ricerca: {status}")
+            
             if status != "OK":
+                logger.warning(f"EMAIL-SYNC: Ricerca fallita con stato {status}")
                 return []
                 
             email_ids = messages[0].split()
+            logger.info(f"EMAIL-SYNC: Trovati {len(email_ids)} messaggi corrispondenti ai criteri.")
+            
             # Process last 20 matching emails
             for e_id in email_ids[-20:]:
                 try:
+                    e_id_str = e_id.decode()
+                    logger.debug(f"EMAIL-SYNC: Recupero headers/body per email ID {e_id_str}...")
                     res, msg_data = mail.fetch(e_id, "(RFC822)")
-                    if res != "OK":
-                        continue
-                        
+                    logger.debug(f"EMAIL-SYNC: Stato fetch {e_id_str}: {res}")
                     raw_email = msg_data[0][1]
                     msg = email.message_from_bytes(raw_email)
                     
@@ -108,11 +117,12 @@ class EmailSyncManager:
                             'body_snippet': body[:200]
                         })
                 except Exception as ex:
-                    logger.error(f"Error processing email ID {e_id}: {ex}")
+                    logger.error(f"EMAIL-SYNC: Errore processamento email ID {e_id}: {ex}")
                     
+            logger.info("EMAIL-SYNC: Chiusura sessione IMAP (logout)...")
             mail.logout()
         except Exception as e:
-            logger.error(f"Error fetching emails: {e}")
+            logger.error(f"EMAIL-SYNC: Errore durante il fetch degli aggiornamenti: {e}")
             
         return updates
 

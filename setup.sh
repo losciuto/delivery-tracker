@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =================================================================
-# Script di Setup per Delivery Tracker v2.0.2
+# Script di Setup per Delivery Tracker v2.1.0
 # =================================================================
 
 echo "📦 Inizio configurazione di Delivery Tracker..."

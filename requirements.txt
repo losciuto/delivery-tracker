@@ -1,3 +1,4 @@
 PyQt6>=6.6.0
 PyQt6-Charts>=6.6.0
 openpyxl>=3.1.0
+msal>=1.20.0

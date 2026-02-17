@@ -8,9 +8,9 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTableWidget, QTableWidgetItem, QPushButton, QLabel,
     QMessageBox, QHeaderView, QAbstractItemView, QStyle, 
-    QStackedWidget, QMenu
+    QStackedWidget, QMenu, QApplication, QProgressDialog
 )
-from PyQt6.QtCore import Qt, QSize, QTimer
+from PyQt6.QtCore import Qt, QSize, QTimer, QThread, pyqtSignal, QObject
 from PyQt6.QtGui import QColor, QBrush, QAction
 
 import database
@@ -20,6 +20,22 @@ from widgets import DashboardWidget, SearchFilterBar
 from gui.dialogs import OrderDialog, SettingsDialog
 
 logger = utils.get_logger(__name__)
+
+
+class SyncWorker(QObject):
+    """Worker for asynchronous email synchronization"""
+    finished = pyqtSignal(int)
+    error = pyqtSignal(str)
+    
+    def run(self):
+        try:
+            from email_manager import EmailSyncManager
+            sync_manager = EmailSyncManager()
+            count = sync_manager.sync_with_db()
+            self.finished.emit(count)
+        except Exception as e:
+            # Assicuriamoci che l'errore venga propagato alla UI
+            self.error.emit(str(e))
 
 
 class MainWindow(QMainWindow):
@@ -219,10 +235,12 @@ class MainWindow(QMainWindow):
         
         # Table
         self.table = QTableWidget()
-        self.table.setColumnCount(13)
+        self.table.setColumnCount(18)
         self.table.setHorizontalHeaderLabels([
             "ID", "Data", "Piattaforma", "Venditore", "Destinazione", "Descrizione", 
-            "Link", "Q.tà", "Cons. Prevista", "Posizione", "Categoria", "Consegnato", "Note"
+            "ID Ordine Sito", "Stato", "Link", "Q.tà", "Cons. Prevista", "Posizione", 
+            "N. Tracking", "Vettore", "Ultimo Miglio",
+            "Categoria", "Consegnato", "Note"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -232,18 +250,18 @@ class MainWindow(QMainWindow):
         self.table.hideColumn(0)  # Hide ID
         
         # Adjust column widths
-        self.table.setColumnWidth(8, 160)  # Cons. Prevista (leggermente più larga)
+        self.table.setColumnWidth(10, 160) # Cons. Prevista
         self.table.setColumnWidth(1, 100)  # Data
-        self.table.setColumnWidth(7, 60)   # Q.tà
-        self.table.setColumnWidth(11, 100) # Consegnato
+        self.table.setColumnWidth(9, 60)   # Q.tà
+        self.table.setColumnWidth(16, 100) # Consegnato
         
         # Behavior for other columns
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)  # Descrizione
-        header.setSectionResizeMode(12, QHeaderView.ResizeMode.Stretch) # Note
+        header.setSectionResizeMode(17, QHeaderView.ResizeMode.Stretch) # Note
         
         # Interactive for most, but ensure good initial fit
-        for i in [2, 3, 4, 6, 9, 10]:
+        for i in [2, 3, 4, 6, 7, 8, 11, 12, 13, 14, 15]:
             header.setSectionResizeMode(i, QHeaderView.ResizeMode.Interactive)
             self.table.setColumnWidth(i, 130)
         
@@ -301,17 +319,17 @@ class MainWindow(QMainWindow):
         view_menu.addAction(orders_action)
         
         # Tools menu
-        tools_menu = menubar.addMenu("&Strumenti")
+        self.tools_menu = menubar.addMenu("&Strumenti")
         
-        sync_email_action = QAction("📧 Sincronizza Email", self)
-        sync_email_action.triggered.connect(self.sync_emails)
-        tools_menu.addAction(sync_email_action)
+        self.sync_email_action = QAction("📧 Sincronizza Email", self)
+        self.sync_email_action.triggered.connect(self.sync_emails)
+        self.tools_menu.addAction(self.sync_email_action)
         
-        tools_menu.addSeparator()
+        self.tools_menu.addSeparator()
         
-        settings_action = QAction("⚙️ Impostazioni", self)
-        settings_action.triggered.connect(self.show_settings)
-        tools_menu.addAction(settings_action)
+        self.settings_action_menu = QAction("⚙️ Impostazioni", self)
+        self.settings_action_menu.triggered.connect(self.show_settings)
+        self.tools_menu.addAction(self.settings_action_menu)
         
         # Help menu
         help_menu = menubar.addMenu("&Aiuto")
@@ -392,6 +410,20 @@ class MainWindow(QMainWindow):
             self.table.setItem(row, 3, QTableWidgetItem(order.get('seller', '')))
             self.table.setItem(row, 4, QTableWidgetItem(order.get('destination', '')))
             self.table.setItem(row, 5, QTableWidgetItem(order.get('description', '')))
+            self.table.setItem(row, 6, QTableWidgetItem(order.get('site_order_id', '')))
+            
+            status_item = QTableWidgetItem(order.get('status', 'In Attesa'))
+            # Format status color based on text
+            if order.get('status') == 'Consegnato':
+                status_item.setForeground(QBrush(QColor("green")))
+            elif order.get('status') == 'Spedito' or order.get('status') == 'In Transito':
+                status_item.setForeground(QBrush(QColor("#2196F3")))
+            elif order.get('status') == 'In Consegna':
+                status_item.setForeground(QBrush(QColor("#FF9800")))
+            elif order.get('status') == 'Problema/Eccezione':
+                status_item.setForeground(QBrush(QColor("red")))
+            
+            self.table.setItem(row, 7, status_item)
 
             # Link with formatting
             link_item = QTableWidgetItem(order.get('link', ''))
@@ -400,17 +432,20 @@ class MainWindow(QMainWindow):
                 font = link_item.font()
                 font.setUnderline(True)
                 link_item.setFont(font)
-            self.table.setItem(row, 6, link_item)
+            self.table.setItem(row, 8, link_item)
             
-            self.table.setItem(row, 7, QTableWidgetItem(str(order.get('quantity', 1))))
-            self.table.setItem(row, 8, QTableWidgetItem(order.get('estimated_delivery', '')))
-            self.table.setItem(row, 9, QTableWidgetItem(order.get('position', '')))
-            self.table.setItem(row, 10, QTableWidgetItem(order.get('category', '')))
-            self.table.setItem(row, 11, QTableWidgetItem("Sì" if order.get('is_delivered') else "No"))
-            self.table.setItem(row, 12, QTableWidgetItem(order.get('notes', '')))
+            self.table.setItem(row, 9, QTableWidgetItem(str(order.get('quantity', 1))))
+            self.table.setItem(row, 10, QTableWidgetItem(order.get('estimated_delivery', '')))
+            self.table.setItem(row, 11, QTableWidgetItem(order.get('position', '')))
+            self.table.setItem(row, 12, QTableWidgetItem(order.get('tracking_number', '')))
+            self.table.setItem(row, 13, QTableWidgetItem(order.get('carrier', '')))
+            self.table.setItem(row, 14, QTableWidgetItem(order.get('last_mile_carrier', '')))
+            self.table.setItem(row, 15, QTableWidgetItem(order.get('category', '')))
+            self.table.setItem(row, 16, QTableWidgetItem("Sì" if order.get('is_delivered') else "No"))
+            self.table.setItem(row, 17, QTableWidgetItem(order.get('notes', '')))
 
             # Add tooltips
-            for col in range(13):
+            for col in range(18):
                 item = self.table.item(row, col)
                 if item:
                     item.setToolTip(item.text())
@@ -436,7 +471,7 @@ class MainWindow(QMainWindow):
                 color = None
             
             if color:
-                for col in range(13):
+                for col in range(18):
                     item = self.table.item(row, col)
                     if item:
                         item.setBackground(color)
@@ -653,36 +688,63 @@ class MainWindow(QMainWindow):
         )
 
     def sync_emails(self):
-        """Synchronize orders with email updates"""
-        from email_manager import EmailSyncManager
-        
+        """Synchronize orders with email updates asynchronously"""
         # Check if email is enabled
         if not self.settings.get('email_sync_enabled', False):
             QMessageBox.warning(self, "Email Sync", "La sincronizzazione email non è abilitata nelle impostazioni.")
             return
 
-        # Show progress
-        progress = QMessageBox(self)
-        progress.setWindowTitle("Sincronizzazione Email")
-        progress.setText("Connessione a Hotmail in corso...")
-        progress.setStandardButtons(QMessageBox.StandardButton.NoButton)
-        progress.show()
-        QApplication.processEvents()
+        # Disable sync action during process
+        self.sync_email_action.setEnabled(False)
         
-        try:
-            sync_manager = EmailSyncManager()
-            count = sync_manager.sync_with_db()
+        # Show non-blocking progress dialog
+        self.progress_dialog = QProgressDialog("Sincronizzazione in corso...", None, 0, 0, self)
+        self.progress_dialog.setWindowTitle("Sincronizzazione Email")
+        self.progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        self.progress_dialog.setCancelButton(None) # Disable cancel for now as it needs worker handling
+        self.progress_dialog.show()
+        
+        # Setup Thread and Worker
+        self.sync_thread = QThread()
+        self.sync_worker = SyncWorker()
+        self.sync_worker.moveToThread(self.sync_thread)
+        
+        # Connect signals
+        self.sync_thread.started.connect(self.sync_worker.run)
+        self.sync_worker.finished.connect(self.on_sync_finished)
+        self.sync_worker.error.connect(self.on_sync_error)
+        
+        # Cleanup when finished
+        self.sync_worker.finished.connect(self.sync_thread.quit)
+        self.sync_worker.error.connect(self.sync_thread.quit)
+        self.sync_worker.finished.connect(self.sync_worker.deleteLater)
+        self.sync_worker.error.connect(self.sync_worker.deleteLater)
+        self.sync_thread.finished.connect(self.sync_thread.deleteLater)
+        
+        # Start the thread
+        self.sync_thread.start()
+
+    def on_sync_finished(self, count):
+        """Handle sync completion"""
+        logger.info(f"MAIN-WINDOW: Sincronizzazione terminata con successo ({count} aggiornamenti)")
+        if hasattr(self, 'progress_dialog'):
+            self.progress_dialog.close()
+            del self.progress_dialog
+        
+        self.sync_email_action.setEnabled(True)
+        
+        if count > 0:
+            QMessageBox.information(self, "Email Sync", f"Sincronizzazione completata!\nAggiornati {count} ordini con nuove informazioni.")
+            self.refresh_data()
+        else:
+            QMessageBox.information(self, "Email Sync", "Nessun nuovo aggiornamento trovato nelle email.")
+
+    def on_sync_error(self, error_msg):
+        """Handle sync error"""
+        logger.error(f"MAIN-WINDOW: Segnale errore ricevuto: {error_msg}")
+        if hasattr(self, 'progress_dialog'):
+            self.progress_dialog.close()
+            del self.progress_dialog
             
-            progress.close()
-            
-            if count > 0:
-                QMessageBox.information(self, "Email Sync", f"Sincronizzazione completata!\nAggiornati {count} ordini con nuove informazioni.")
-                self.refresh_data()
-            else:
-                # Specific check if no updates found
-                QMessageBox.information(self, "Email Sync", "Nessun nuovo aggiornamento trovato nelle email.")
-                
-        except Exception as e:
-            progress.close()
-            logger.error(f"Sync error: {e}")
-            QMessageBox.critical(self, "Errore Sync", f"Si è verificato un errore durante la sincronizzazione:\n{e}")
+        self.sync_email_action.setEnabled(True)
+        QMessageBox.critical(self, "Errore Sync", f"Si è verificato un errore durante la sincronizzazione:\n{error_msg}")

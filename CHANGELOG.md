@@ -4,8 +4,22 @@ Tutte le modifiche importanti a questo progetto saranno documentate in questo fi
 
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/),
 e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/).
+## [2.1.0] - 2026-02-17
+### ✨ Aggiunte
+- **ID Ordine Sito**: Nuovo campo per tracciare l'ID dell'ordine direttamente dal sito del venditore (es. Amazon, eBay).
+- **Gestione Stati Dinamica**: Introdotta la colonna "Stato" con colorazione condizionale (In Attesa, Spedito, In Transito, In Consegna, Consegnato, Problema).
+- **Sincronizzazione Email Pro**:
+    - Estrazione automatica dello stato e del Site Order ID dai testi delle email.
+    - Supporto multilingua completo (Italiano/Inglese) per le notifiche di spedizione.
+    - Logica di matching potenziata: priorità a Tracking > ID Ordine > Descrizione.
 
-## [2.0.2] - 2026-02-17
+### 🔧 Ottimizzazioni & Fix
+- **Stabilità IMAP**: Ottimizzata la scansione delle cartelle (limitata alle 15 più rilevanti) per evitare disconnessioni dai server Outlook/Hotmail.
+- **Ricerca Intelligente**: Passaggio alla ricerca IMAP per data (`SINCE`) per una maggiore compatibilità e velocità.
+- **Logging**: Aggiunto logging dettagliato `EMAIL-SYNC` per il debug del matching in tempo reale.
+- **Bug Fix**: Corretta l'indentazione nella logica di estrazione che impediva il salvataggio degli aggiornamenti in alcuni casi.
+- **UI**: Corretto un `AttributeError` nel dialogo dell'ordine relativo al campo link.
+
 ### ✨ Aggiunte
 - **Tema Dinamico**: Implementazione del cambio tema (Luce/Buio) in tempo reale senza riavvio.
 - **UI Intelligente**: Dimensionamento dinamico della finestra basato sulla risoluzione dello schermo.

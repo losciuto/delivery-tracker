@@ -1,4 +1,4 @@
-# Delivery Tracker v2.0.2
+# Delivery Tracker v2.1.0
 
 A modern and comprehensive Python desktop application to manage delivery deadlines from various online platforms.
 
@@ -12,6 +12,8 @@ A modern and comprehensive Python desktop application to manage delivery deadlin
   - Item Description
   - Clickable product link
   - Quantity
+  - **Site Order ID** (e.g., Amazon, eBay IDs)
+  - **Dynamic Order Status** (Waiting, Shipped, In Transit, Delivered, etc.)
   - Physical Location (Warehouse, Home, Office, etc.)
   - Customizable Category
   - Notes for discrepancies or defects
@@ -54,8 +56,14 @@ A modern and comprehensive Python desktop application to manage delivery deadlin
 - Theme selection (Light/Dark)
 - Notification configuration
 - Days in advance for alarms
+- **OAuth2 Email Integration** (Hotmail/Outlook)
 - Automatic backup
 - Show/hide delivered orders
+
+### 📧 Pro Email Synchronization
+- **Auto-Extraction**: Automatic tracking number, carrier and status detection.
+- **Multi-language Support**: Recognizes English and Italian shipment terms.
+- **Smart Matching**: Priority matching by tracking or Site Order ID.
 
 ### 🔍 Advanced Features
 - **Context Menu**: Right-click for quick actions
@@ -179,8 +187,15 @@ delivery-tracker/
 - Restore from a backup in `backups/`
 - Or delete `delivery_tracker.db` to recreate it (you'll lose data)
 
-## 🔄 Updates v2.0.2
+## 🔄 Updates v2.1.0
+- ✅ **Site Order ID**: New field for professional site tracking.
+- ✅ **Dynamic Status**: State management with conditional coloring.
+- ✅ **Email Sync Pro**: 
+    - Full IT/EN multi-language support.
+    - Optimized IMAP search (by date) and stabilized folder scanning.
+    - Advanced matching logic and detailed debug logging.
 
+## 🔄 Updates v2.0.2
 - ✅ **Fix**: Resolved missing dependency issue (PyQt6-Charts)
 - ✅ **UI**: More intuitive and modern sidebar icons
 - ✅ **Improvements**: General stability and code cleanup

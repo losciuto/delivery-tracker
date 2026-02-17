@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import QDate, pyqtSignal
 
 import config
+from config import ORDER_STATUSES
 import utils
 import database
 
@@ -47,9 +48,16 @@ class OrderDialog(QDialog):
         self.desc_input = QLineEdit()
         product_layout.addRow("Descrizione:*", self.desc_input)
         
+        self.site_order_id_input = QLineEdit()
+        self.site_order_id_input.setPlaceholderText("Es: 403-1234567-1234567...")
+        product_layout.addRow("ID Ordine Sito:", self.site_order_id_input)
         self.link_input = QLineEdit()
         self.link_input.setPlaceholderText("https://...")
         product_layout.addRow("Link:", self.link_input)
+        
+        self.status_input = QComboBox()
+        self.status_input.addItems(ORDER_STATUSES)
+        product_layout.addRow("Stato:", self.status_input)
         
         self.qty_input = QLineEdit()
         self.qty_input.setText("1")
@@ -88,6 +96,18 @@ class OrderDialog(QDialog):
         self.est_delivery_input.setDate(QDate.currentDate().addDays(7))
         self.est_delivery_input.setDisplayFormat("dd/MM/yyyy")
         delivery_layout.addRow("Consegna Prevista:", self.est_delivery_input)
+        
+        self.tracking_input = QLineEdit()
+        self.tracking_input.setPlaceholderText("Es: 1Z999...")
+        delivery_layout.addRow("N. Tracking:", self.tracking_input)
+        
+        self.carrier_input = QLineEdit()
+        self.carrier_input.setPlaceholderText("Es: UPS, DHL, Amazon...")
+        delivery_layout.addRow("Vettore:", self.carrier_input)
+        
+        self.last_mile_input = QLineEdit()
+        self.last_mile_input.setPlaceholderText("Es: Poste Italiane, SDA...")
+        delivery_layout.addRow("Ultimo Miglio:", self.last_mile_input)
         
         self.alarm_cb = QCheckBox("Abilita Allarme")
         self.alarm_cb.setChecked(True)
@@ -136,7 +156,9 @@ class OrderDialog(QDialog):
         self.seller_input.setText(self.order_data.get('seller', ''))
         self.destination_input.setText(self.order_data.get('destination', ''))
         self.desc_input.setText(self.order_data['description'])
+        self.site_order_id_input.setText(self.order_data.get('site_order_id', ''))
         self.link_input.setText(self.order_data.get('link', ''))
+        self.status_input.setCurrentText(self.order_data.get('status', 'In Attesa'))
         self.qty_input.setText(str(self.order_data.get('quantity', 1)))
         self.category_input.setCurrentText(self.order_data.get('category', ''))
         
@@ -151,6 +173,9 @@ class OrderDialog(QDialog):
         self.alarm_cb.setChecked(bool(self.order_data.get('alarm_enabled', True)))
         self.delivered_cb.setChecked(bool(self.order_data.get('is_delivered', False)))
         self.position_input.setText(self.order_data.get('position', ''))
+        self.tracking_input.setText(self.order_data.get('tracking_number', ''))
+        self.carrier_input.setText(self.order_data.get('carrier', ''))
+        self.last_mile_input.setText(self.order_data.get('last_mile_carrier', ''))
         self.notes_input.setText(self.order_data.get('notes', ''))
 
     def validate_and_accept(self):
@@ -189,7 +214,9 @@ class OrderDialog(QDialog):
             'seller': self.seller_input.text().strip(),
             'destination': self.destination_input.text().strip(),
             'description': self.desc_input.text().strip(),
+            'site_order_id': self.site_order_id_input.text().strip(),
             'link': self.link_input.text().strip(),
+            'status': self.status_input.currentText(),
             'quantity': int(self.qty_input.text() or 1),
             'category': self.category_input.currentText().strip(),
             'order_date': self.order_date_input.date().toString('yyyy-MM-dd'),
@@ -197,6 +224,9 @@ class OrderDialog(QDialog):
             'alarm_enabled': self.alarm_cb.isChecked(),
             'is_delivered': self.delivered_cb.isChecked(),
             'position': self.position_input.text().strip(),
+            'tracking_number': self.tracking_input.text().strip(),
+            'carrier': self.carrier_input.text().strip(),
+            'last_mile_carrier': self.last_mile_input.text().strip(),
             'notes': self.notes_input.toPlainText().strip()
         }
 
@@ -212,6 +242,18 @@ class SettingsDialog(QDialog):
         self.resize(500, 400)
         self.settings = utils.Settings.load()
         self.setup_ui()
+    
+    def connect_microsoft_account(self):
+        """Invoke auth_helper to connect account"""
+        from auth_helper import authorize
+        QMessageBox.information(self, "OAuth2 Authentication", 
+                               "Si aprirà il browser. Segui le istruzioni nel terminale/finestra per autorizzare l'app.")
+        if authorize():
+            QMessageBox.information(self, "Successo", "Account collegato con successo!")
+            self.settings = utils.Settings.load() # Reload to get new cache and email
+            self.email_addr_input.setText(self.settings.get('email_address', ''))
+        else:
+            QMessageBox.critical(self, "Errore", "L'autorizzazione è fallita o è stata annullata.")
     
     def setup_ui(self):
         layout = QVBoxLayout()
@@ -259,13 +301,12 @@ class SettingsDialog(QDialog):
         self.email_addr_input = QLineEdit()
         self.email_addr_input.setText(self.settings.get('email_address', ''))
         self.email_addr_input.setPlaceholderText("esempio@hotmail.com")
-        email_layout.addRow("Indirizzo Email:", self.email_addr_input)
+        self.email_addr_input.setReadOnly(True) # Now managed via OAuth
+        email_layout.addRow("Account Collegato:", self.email_addr_input)
         
-        self.email_pass_input = QLineEdit()
-        self.email_pass_input.setText(self.settings.get('email_password', ''))
-        self.email_pass_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.email_pass_input.setPlaceholderText("Password per l'app")
-        email_layout.addRow("Password App:", self.email_pass_input)
+        self.connect_btn = QPushButton("Connetti Account Microsoft")
+        self.connect_btn.clicked.connect(self.connect_microsoft_account)
+        email_layout.addRow("", self.connect_btn)
         
         email_group.setLayout(email_layout)
         layout.addWidget(email_group)
@@ -318,7 +359,6 @@ class SettingsDialog(QDialog):
         # Email settings
         self.settings['email_sync_enabled'] = self.email_sync_cb.isChecked()
         self.settings['email_address'] = self.email_addr_input.text().strip()
-        self.settings['email_password'] = self.email_pass_input.text().strip()
         
         try:
             self.settings['notification_days_before'] = int(self.notif_days_input.text())

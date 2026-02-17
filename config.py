@@ -8,7 +8,7 @@ from enum import Enum
 
 # Application Info
 APP_NAME = "Scadenziario Consegne"
-APP_VERSION = "2.0.2"
+APP_VERSION = "2.1.0"
 APP_AUTHOR = "Massimo Lo Sciuto"
 APP_SUPPORT = "Antigravity"
 APP_DEVELOPER = "Gemini 3 Pro"
@@ -202,7 +202,18 @@ DEFAULT_CATEGORIES = [
     "Auto e Moto",
     "Ufficio e Scuola",
     "Strumenti Musicali",
+    "Attrezzi",
     "Hobby e Collezionismo",
     "Altro"
+]
+
+# Order Statuses
+ORDER_STATUSES = [
+    "In Attesa",
+    "Spedito",
+    "In Transito",
+    "In Consegna",
+    "Consegnato",
+    "Problema/Eccezione"
 ]
 

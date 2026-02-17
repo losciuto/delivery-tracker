@@ -1,4 +1,4 @@
-# Scadenziario Consegne (Delivery Tracker) v2.0.2
+# Scadenziario Consegne (Delivery Tracker) v2.1.0
 
 Un'applicazione desktop moderna e completa in Python per gestire le scadenze delle consegne da diverse piattaforme online.
 
@@ -12,6 +12,8 @@ Un'applicazione desktop moderna e completa in Python per gestire le scadenze del
   - Descrizione Oggetto
   - Link cliccabile al prodotto
   - Quantità
+  - **ID Ordine Sito** (es. Amazon: 123-1234567-1234567)
+  - **Stato Dinamico** colorato (In Attesa, Spedito, In Transito, ecc.)
   - Posizione fisica (Magazzino, Casa, Ufficio, ecc.)
   - Categoria personalizzabile
   - Note per difformità o difetti
@@ -54,8 +56,14 @@ Un'applicazione desktop moderna e completa in Python per gestire le scadenze del
 - Selezione tema (Chiaro/Scuro)
 - Configurazione notifiche
 - Giorni di anticipo per allarmi
+- **Integrazione Email OAuth2** (Hotmail/Outlook)
 - Backup automatico
 - Visualizzazione ordini consegnati
+
+### 📧 Sincronizzazione Email Avanzata
+- **Auto-Tracking**: Estrazione automatica di tracking, vettore e stato dalle email.
+- **Supporto Multilingua**: Rilevamento termini in Italiano e Inglese.
+- **Smart Matching**: Associazione intelligente basata su numero di tracking o ID ordine.
 
 ### 🔍 Funzionalità Avanzate
 - **Menu Contestuale**: Click destro per azioni rapide
@@ -203,8 +211,15 @@ delivery-tracker/
 - Ripristina da un backup in `backups/`
 - O elimina `delivery_tracker.db` per ricrearlo (perderai i dati)
 
-## 🔄 Aggiornamenti v2.0.2
+## 🔄 Aggiornamenti v2.1.0
+- ✅ **ID Ordine Sito**: Nuovo campo per tracciamento ordini Amazon/eBay/ecc.
+- ✅ **Stato Dinamico**: Colonna stato con colorazione condizionale intelligente.
+- ✅ **Email Sync Pro**: 
+    - Supporto IT/EN completo.
+    - Ricerca per data (`SINCE`) e scansione folder ottimizzata.
+    - Fix bug estrazione e logging avanzato.
 
+## 🔄 Aggiornamenti v2.0.2
 - ✅ **Fix**: Risolto problema dipendenza mancante (PyQt6-Charts)
 - ✅ **UI**: Icone sidebar più intuitive e moderne
 - ✅ **Miglioramenti**: Stabilità generale e cleanup codice

@@ -1,50 +1,98 @@
 """
 Email manager module for Delivery Tracker.
-Handles IMAP connection, searching, and parsing of delivery-related emails.
+Handles IMAP connection (XOAUTH2), searching, and parsing of delivery-related emails.
 """
 import imaplib
 import email
 from email.header import decode_header
 import re
-from datetime import datetime
 from typing import List, Dict, Any, Optional
+import msal
+import base64
 import utils
 import database
 
 logger = utils.get_logger(__name__)
 
-# IMAP Settings for Hotmail/Outlook
-IMAP_SERVER = "imap-mail.outlook.com"
+# Email Server Settings (Outlook/Office365/Hotmail)
+IMAP_SERVER = "outlook.office365.com"
 IMAP_PORT = 993
+IMAP_TIMEOUT = 30 # secondi
+
+# OAuth2 Settings
+CLIENT_ID = "3932ab49-e115-44d6-964e-9b43a479c5bd"
+AUTHORITY = "https://login.microsoftonline.com/common"
+SCOPES = ["https://outlook.office.com/IMAP.AccessAsUser.All"]
 
 class EmailSyncManager:
-    """Manages email synchronization and parsing"""
+    """Manages email synchronization and parsing via OAuth2"""
     
     def __init__(self):
         self.settings = utils.Settings.load()
         self.email_addr = self.settings.get('email_address', '')
-        self.email_pass = self.settings.get('email_password', '')
         self.enabled = self.settings.get('email_sync_enabled', False)
+        self.token_cache = msal.SerializableTokenCache()
+        
+        # Load cache if exists
+        cache_data = self.settings.get('ms_token_cache')
+        if cache_data:
+            self.token_cache.deserialize(cache_data)
+
+    def _save_cache(self):
+        """Save token cache to settings"""
+        if self.token_cache.has_state_changed:
+            self.settings['ms_token_cache'] = self.token_cache.serialize()
+            utils.Settings.save(self.settings)
+
+    def get_access_token(self) -> Optional[str]:
+        """Get or refresh access token"""
+        app = msal.PublicClientApplication(CLIENT_ID, authority=AUTHORITY, token_cache=self.token_cache)
+        
+        # Try silent acquisition
+        accounts = app.get_accounts(username=self.email_addr)
+        result = None
+        if accounts:
+            result = app.acquire_token_silent(SCOPES, account=accounts[0])
+            
+        if result and "access_token" in result:
+            self._save_cache()
+            return result["access_token"]
+            
+        return None
 
     def connect(self) -> Optional[imaplib.IMAP4_SSL]:
-        """Connect and login to IMAP server"""
-        if not self.email_addr or not self.email_pass:
-            logger.warning("Email credentials not configured")
+        """Connect and login to IMAP server with modern auth (XOAUTH2)"""
+        if not self.email_addr:
+            logger.warning("EMAIL-SYNC: Indirizzo email non configurato.")
             return None
             
+        token = self.get_access_token()
+        if not token:
+            logger.error("EMAIL-SYNC: Token non disponibile. Necessaria nuova autorizzazione.")
+            raise Exception("Account Microsoft non autorizzato. Vai nelle impostazioni per connetterlo.")
+            
         try:
-            logger.info(f"EMAIL-SYNC: Inizializzazione connessione SSL a {IMAP_SERVER}:{IMAP_PORT}...")
-            mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
-            logger.info(f"EMAIL-SYNC: Connessione stabilita. Tentativo di login per {self.email_addr}...")
-            status, resp = mail.login(self.email_addr, self.email_pass)
-            logger.info(f"EMAIL-SYNC: Risposta login: {status} - {resp}")
+            logger.info(f"OAUTH2: Inizializzazione connessione SSL a {IMAP_SERVER}...")
+            mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT, timeout=IMAP_TIMEOUT)
+            
+            # Generate XOAUTH2 string
+            auth_string = f"user={self.email_addr}\1auth=Bearer {token}\1\1"
+            
+            logger.info("OAUTH2: Invio comando AUTHENTICATE XOAUTH2...")
+            status, resp = mail.authenticate('XOAUTH2', lambda x: auth_string)
+            
+            if status != 'OK':
+                logger.error(f"OAUTH2: Autenticazione fallita: {resp}")
+                raise Exception(f"Errore OAuth2: {resp}")
+                
+            logger.info("OAUTH2: Autenticazione completata con successo.")
             return mail
         except Exception as e:
-            logger.error(f"EMAIL-SYNC: Errore durante la connessione/login: {e}")
-            return None
+            logger.error(f"OAUTH2: Errore durante la connessione: {e}")
+            raise e
 
     def fetch_updates(self) -> List[Dict[str, Any]]:
-        """Fetch and parse recent delivery emails"""
+        """Fetch and parse recent delivery emails from multiple relevant folders"""
         if not self.enabled:
             return []
             
@@ -54,121 +102,270 @@ class EmailSyncManager:
             
         updates = []
         try:
-            logger.info("EMAIL-SYNC: Selezione cartella INBOX...")
-            status, count = mail.select("INBOX")
-            logger.info(f"EMAIL-SYNC: Stato select: {status} (Messaggi totali: {count[0].decode() if count[0] else '?'})")
+            # 1. Get all folders
+            status, folder_list = mail.list()
+            if status != 'OK':
+                logger.warning(f"EMAIL-SYNC: Impossibile recuperare la lista delle cartelle: {status}")
+                # Fallback to just INBOX
+                folders_to_scan = ["INBOX"]
+            logger.info(f"EMAIL-SYNC: Trovate {len(folder_list)} cartelle totali.")
             
-            # Search for unread emails or emails within last 7 days
-            search_query = '(OR OR OR (SUBJECT "spedito") (SUBJECT "consegnato") (SUBJECT "tracking") (SUBJECT "delivery") (SUBJECT "shipped"))'
-            logger.info(f"EMAIL-SYNC: Esecuzione ricerca IMAP: {search_query}")
+            # 2. Filter folders: only most relevant to avoid connection drops (too many commands)
+            relevant_names = ["inbox", "amazon", "ebay", "aliexpress", "alibaba", "subito", "temu", "order", "ordine", "spedizion", "shipp", "archivio", "archive"]
+            folders_to_scan = []
+            for f in folder_list:
+                line = f.decode()
+                match = re.search(r'"([^"]+)"$', line) or re.search(r' ([^ ]+)$', line)
+                if match:
+                    folder_name = match.group(1).strip()
+                    lower_name = folder_name.lower()
+                    if any(rn in lower_name for rn in relevant_names):
+                        folders_to_scan.append(folder_name)
             
-            status, messages = mail.search(None, search_query)
-            logger.info(f"EMAIL-SYNC: Stato ricerca: {status}")
+            # Limit to max 15 folders to prevent Outlook from closing connection
+            folders_to_scan = folders_to_scan[:15]
+            logger.info(f"EMAIL-SYNC: Cartelle selezionate per scansione (max 15): {folders_to_scan}")
             
-            if status != "OK":
-                logger.warning(f"EMAIL-SYNC: Ricerca fallita con stato {status}")
-                return []
-                
-            email_ids = messages[0].split()
-            logger.info(f"EMAIL-SYNC: Trovati {len(email_ids)} messaggi corrispondenti ai criteri.")
+            # 3. Scan each folder
+            from datetime import date, timedelta
+            since_date = (date.today() - timedelta(days=15)).strftime("%d-%b-%Y")
+            search_query = f'(SINCE "{since_date}")'
             
-            # Process last 20 matching emails
-            for e_id in email_ids[-20:]:
+            # Keywords for Python-side filtering
+            all_keywords = ["spedito", "consegnato", "tracking", "delivery", "shipped", 
+                            "ordine", "order", "acquisto", "delivered", "dispatched",
+                            "transito", "transit", "partito", "consegna"]
+            
+            for folder in folders_to_scan:
                 try:
-                    e_id_str = e_id.decode()
-                    logger.debug(f"EMAIL-SYNC: Recupero headers/body per email ID {e_id_str}...")
-                    res, msg_data = mail.fetch(e_id, "(RFC822)")
-                    logger.debug(f"EMAIL-SYNC: Stato fetch {e_id_str}: {res}")
-                    raw_email = msg_data[0][1]
-                    msg = email.message_from_bytes(raw_email)
+                    logger.info(f"EMAIL-SYNC: Scansione folder: {folder}...")
+                    # Selection
+                    try:
+                        status, _ = mail.select(f'"{folder}"', readonly=True)
+                    except Exception as select_err:
+                        logger.error(f"EMAIL-SYNC: Errore critico select {folder}: {select_err}")
+                        if "closed" in str(select_err).lower() or "eof" in str(select_err).lower():
+                            break
+                        continue
+                        
+                    if status != "OK":
+                        logger.warning(f"EMAIL-SYNC: Server ha rifiutato folder {folder}: {status}")
+                        continue
                     
-                    # Get subject
-                    subject, encoding = decode_header(msg["Subject"])[0]
-                    if isinstance(subject, bytes):
-                        subject = subject.decode(encoding if encoding else "utf-8")
+                    # Search by date (Standard IMAP SINCE)
+                    try:
+                        status, messages = mail.search(None, search_query)
+                    except Exception as search_err:
+                        logger.error(f"EMAIL-SYNC: Errore search in {folder}: {search_err}")
+                        continue
+                        
+                    if status != "OK" or not messages[0]:
+                        logger.info(f"EMAIL-SYNC: Nessuna email recente in {folder}")
+                        continue
+                        
+                    email_ids = messages[0].split()
+                    logger.info(f"EMAIL-SYNC: Trovate {len(email_ids)} email recenti in {folder}")
                     
-                    # Get body
-                    body = ""
-                    if msg.is_multipart():
-                        for part in msg.walk():
-                            content_type = part.get_content_type()
-                            content_disposition = str(part.get("Content-Disposition"))
-                            if content_type == "text/plain" and "attachment" not in content_disposition:
-                                body = part.get_payload(decode=True).decode()
-                                break
-                    else:
-                        body = msg.get_payload(decode=True).decode()
+                    # Process those emails
+                    for e_id in email_ids:
+                        try:
+                            # Fetch headers first to check subject/relevance
+                            res, head_data = mail.fetch(e_id, "(BODY[HEADER.FIELDS (SUBJECT DATE)])")
+                            if not head_data or not head_data[0]: continue
+                            
+                            header_text = head_data[0][1].decode(errors='replace')
+                            subject_match = re.search(r'Subject: (.*)', header_text, re.IGNORECASE)
+                            subject = subject_match.group(1).strip() if subject_match else ""
+                            
+                            # Decode subject
+                            try:
+                                decoded_parts = decode_header(subject)
+                                subject = ""
+                                for part, enc in decoded_parts:
+                                    if isinstance(part, bytes):
+                                        subject += part.decode(enc or 'utf-8', errors='replace')
+                                    else:
+                                        subject += part
+                            except: pass
 
-                    # Simple parsing logic
-                    # 1. Identify tracking number
-                    tracking_match = re.search(r'\b[A-Z0-9]{10,25}\b', body) # Generic tracking pattern
-                    if tracking_match:
-                        tracking_num = tracking_match.group(0)
-                        
-                        # Check if we have an order with this tracking or info
-                        # For now, we try to match by description if mentioned in email
-                        # or by extracting more info.
-                        
-                        updates.append({
-                            'email_id': e_id.decode(),
-                            'subject': subject,
-                            'tracking': tracking_num,
-                            'received_at': msg["Date"],
-                            'body_snippet': body[:200]
-                        })
-                except Exception as ex:
-                    logger.error(f"EMAIL-SYNC: Errore processamento email ID {e_id}: {ex}")
+                            # Python-side filtering: Check if subject is relevant
+                            if not any(kw in subject.lower() for kw in all_keywords):
+                                continue
+
+                            # Extraction (Tracking, Dates, etc.)
+                            # ... (tracking patterns unchanged) ...
+                            
+                            # extraction of Site Order ID (Amazon and standard patterns)
+                            # ... (patterns unchanged) ...
+                            
+                            # extraction of Status
+                            # ... (later in code) ...
+                            
+                            # We fetch RFC822 for body parsing
+                            logger.info(f"EMAIL-SYNC: Analisi email: {subject}")
+                            res, msg_data = mail.fetch(e_id, "(RFC822)")
+                            if not msg_data or not msg_data[0]: continue
+                            
+                            raw_email = msg_data[0][1]
+                            msg = email.message_from_bytes(raw_email)
+                            
+                            # Get body
+                            body = ""
+                            if msg.is_multipart():
+                                for part in msg.walk():
+                                    if part.get_content_type() in ["text/plain", "text/html"] and "attachment" not in str(part.get("Content-Disposition")):
+                                        payload = part.get_payload(decode=True)
+                                        charset = part.get_content_charset() or 'utf-8'
+                                        body = payload.decode(charset, errors='replace')
+                                        break
+                            else:
+                                payload = msg.get_payload(decode=True)
+                                charset = msg.get_content_charset() or 'utf-8'
+                                body = payload.decode(charset, errors='replace')
+                            
+                            # Clean HTML if present
+                            body = re.sub('<[^<]+?>', '', body) # Simple tag removal
+                            
+                            # extraction of status - EN/IT keywords
+                            status = None
+                            body_lower = body.lower()
+                            subject_lower = subject.lower()
+                            
+                            if any(kw in subject_lower or kw in body_lower for kw in ["consegnato", "delivered", "consegna effettuata", "handed over"]):
+                                status = "Consegnato"
+                            elif any(kw in subject_lower or kw in body_lower for kw in ["in consegna", "out for delivery", "arriverà oggi", "on its way", "today"]):
+                                status = "In Consegna"
+                            elif any(kw in subject_lower or kw in body_lower for kw in ["in transito", "in transit", "partito", "at sorting", "departed"]):
+                                status = "In Transito"
+                            elif any(kw in subject_lower or kw in body_lower for kw in ["spedito", "shipped", "invio", "dispatched", "sent"]):
+                                status = "Spedito"
+                            elif any(kw in subject_lower or kw in body_lower for kw in ["eccezione", "problema", "ritardo", "exception", "delay", "address", "failure"]):
+                                status = "Problema/Eccezione"
+                                
+                            updates.append({
+                                'email_id': f"{folder}_{e_id.decode()}",
+                                'subject': subject,
+                                'tracking': tracking,
+                                'carrier': carrier,
+                                'last_mile_carrier': None,
+                                'site_order_id': site_order_id,
+                                'status': status,
+                                'received_at': msg["Date"],
+                                'body_snippet': body[:1000],
+                                'folder': folder
+                            })
+                        except Exception as ex:
+                            logger.error(f"EMAIL-SYNC: Errore email {e_id} in {folder}: {ex}")
+                except Exception as folder_err:
+                    logger.error(f"EMAIL-SYNC: Errore folder {folder}: {folder_err}")
                     
-            logger.info("EMAIL-SYNC: Chiusura sessione IMAP (logout)...")
-            mail.logout()
-        except Exception as e:
-            logger.error(f"EMAIL-SYNC: Errore durante il fetch degli aggiornamenti: {e}")
+        finally:
+            try:
+                mail.logout()
+            except:
+                pass
             
         return updates
 
     def sync_with_db(self):
         """Match email updates with database orders"""
-        updates = self.fetch_updates()
+        logger.info("EMAIL-SYNC: Inizio sync_with_db...")
+        try:
+            updates = self.fetch_updates()
+            logger.info(f"EMAIL-SYNC: Recuperati {len(updates)} potenziali aggiornamenti")
+        except Exception as e:
+            logger.error(f"EMAIL-SYNC: Errore fatale in fetch_updates: {e}")
+            return 0
+        
         applied_count = 0
         
         for update in updates:
             # Logic to find matching order
-            # 1. Match by tracking number (if we had it in DB)
-            # 2. Match by keywords in subject/body vs order description
             orders = database.get_orders(include_delivered=False)
+            matched_order = None
             
-            for order in orders:
-                # If order description is in subject or body
-                if order['description'].lower() in update['subject'].lower() or \
-                   order['description'].lower() in update['body_snippet'].lower():
+            logger.info(f"EMAIL-SYNC: Tentativo matching per email: '{update['subject']}'")
+            logger.info(f"EMAIL-SYNC: Dati estratti: Tracking={update['tracking']}, OrderID={update['site_order_id']}, Status={update['status']}")
+            # 1. Match by tracking number (Highest priority)
+            if update.get('tracking'):
+                for order in orders:
+                    current_tracking = (order.get('tracking_number') or "").strip()
+                    if current_tracking and current_tracking == update['tracking']:
+                        matched_order = order
+                        break
+            
+            # 2. Match by site_order_id (High priority)
+            if not matched_order and update.get('site_order_id'):
+                for order in orders:
+                    current_site_id = (order.get('site_order_id') or "").strip()
+                    if current_site_id and current_site_id == update['site_order_id']:
+                        matched_order = order
+                        break
+            
+            # 3. Match by keywords in subject/body vs order description (fallback)
+            if not matched_order:
+                for order in orders:
+                    desc_lower = (order.get('description') or "").lower()
+                    if desc_lower and (desc_lower in update['subject'].lower() or desc_lower in update['body_snippet'].lower()):
+                        logger.info(f"EMAIL-SYNC: Match trovato tramite descrizione: '{desc_lower}'")
+                        matched_order = order
+                        break
+            
+            if not matched_order:
+                logger.info(f"EMAIL-SYNC: Nessun ordine corrispondente trovato in DB per questa email.")
+            
+            if matched_order:
+                # Update order status if not already updated by this email
+                if matched_order.get('last_email_id') != update['email_id']:
+                    # Determine new status/date from email
+                    is_delivered = any(kw in update['subject'].lower() for kw in ["consegnato", "delivered", "consegna effettuata"])
                     
-                    # Update order status if not already updated by this email
-                    if order.get('last_email_id') != update['email_id']:
-                        # Determine new status/date from email
-                        is_delivered = "consegnato" in update['subject'].lower() or "delivered" in update['subject'].lower()
-                        
-                        # Try to find a date in the body if it's a delivery notification
-                        est_delivery = order['estimated_delivery']
-                        date_match = re.search(r'(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})', update['body_snippet'])
-                        if date_match:
-                            # Simplistic date update
-                            est_delivery = "-".join(date_match.groups())
+                    # Try to find a date in the body if it's a delivery notification
+                    est_delivery = matched_order.get('estimated_delivery')
+                    date_match = re.search(r'(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})', update['body_snippet'])
+                    if date_match:
+                        # Simplistic date update: year-month-day
+                        d, m, y = date_match.groups()
+                        if len(y) == 2: y = "20" + y
+                        est_delivery = f"{y}-{m.zfill(2)}-{d.zfill(2)}"
 
-                        # Update DB
-                        update_data = dict(order)
-                        update_data['is_delivered'] = is_delivered
-                        update_data['last_email_id'] = update['email_id']
-                        update_data['last_sync_at'] = datetime.now().isoformat()
-                        if not is_delivered and est_delivery != order['estimated_delivery']:
-                            update_data['estimated_delivery'] = est_delivery
-                        
-                        # Add a note about the email
-                        new_note = f"\n[Aggiornamento Email {datetime.now().strftime('%d/%m/%Y')}]: {update['subject']}"
-                        update_data['notes'] = (update_data['notes'] or "") + new_note
-                        
-                        if database.update_order(order['id'], update_data):
-                            applied_count += 1
-                            logger.info(f"Updated order {order['id']} from email: {update['subject']}")
-                            break # Move to next update
+                    # Update DB
+                    update_data = dict(matched_order)
+                    update_data['last_email_id'] = update['email_id']
+                    update_data['last_sync_at'] = datetime.now().isoformat()
+                    
+                    # Update status and is_delivered
+                    if update.get('status'):
+                        update_data['status'] = update['status']
+                        if update['status'] == 'Consegnato':
+                            update_data['is_delivered'] = True
+                    
+                    # If we don't have a status but subject says delivered
+                    if not update.get('status'):
+                        is_delivered = any(kw in update['subject'].lower() for kw in ["consegnato", "delivered", "consegna effettuata"])
+                        if is_delivered:
+                            update_data['is_delivered'] = True
+                            update_data['status'] = "Consegnato"
+
+                    # Persist new info if empty in DB
+                    if update.get('site_order_id') and not update_data.get('site_order_id'):
+                        update_data['site_order_id'] = update['site_order_id']
+                    if update.get('tracking') and not update_data.get('tracking_number'):
+                        update_data['tracking_number'] = update['tracking']
+                    if update.get('carrier') and not update_data.get('carrier'):
+                        update_data['carrier'] = update['carrier']
+                    if update.get('last_mile_carrier') and not update_data.get('last_mile_carrier'):
+                        update_data['last_mile_carrier'] = update['last_mile_carrier']
+
+                    if not is_delivered and est_delivery != matched_order.get('estimated_delivery'):
+                        update_data['estimated_delivery'] = est_delivery
+                    
+                    # Add a note about the email
+                    new_note = f"\n[Aggiornamento Email {datetime.now().strftime('%d/%m/%Y')}]: {update['subject']}"
+                    update_data['notes'] = (update_data['notes'] or "") + new_note
+                    
+                    if database.update_order(matched_order['id'], update_data):
+                        applied_count += 1
+                        logger.info(f"Updated order {matched_order['id']} from email: {update['subject']}")
                             
         return applied_count

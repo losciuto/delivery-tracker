@@ -70,6 +70,11 @@ def init_db():
                     category TEXT,
                     last_email_id TEXT,
                     last_sync_at TEXT,
+                    tracking_number TEXT,
+                    carrier TEXT,
+                    last_mile_carrier TEXT,
+                    site_order_id TEXT,
+                    status TEXT DEFAULT 'In Attesa',
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
@@ -114,6 +119,11 @@ def init_db():
                 ('category', 'ALTER TABLE orders ADD COLUMN category TEXT'),
                 ('last_email_id', 'ALTER TABLE orders ADD COLUMN last_email_id TEXT'),
                 ('last_sync_at', 'ALTER TABLE orders ADD COLUMN last_sync_at TEXT'),
+                ('tracking_number', 'ALTER TABLE orders ADD COLUMN tracking_number TEXT'),
+                ('carrier', 'ALTER TABLE orders ADD COLUMN carrier TEXT'),
+                ('last_mile_carrier', 'ALTER TABLE orders ADD COLUMN last_mile_carrier TEXT'),
+                ('site_order_id', 'ALTER TABLE orders ADD COLUMN site_order_id TEXT'),
+                ('status', "ALTER TABLE orders ADD COLUMN status TEXT DEFAULT 'In Attesa'"),
                 ('created_at', 'ALTER TABLE orders ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP'),
                 ('updated_at', 'ALTER TABLE orders ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP'),
             ]
@@ -138,9 +148,11 @@ def add_order(order_data: Dict[str, Any]) -> Optional[int]:
                 INSERT INTO orders (
                     order_date, platform, seller, destination, description, 
                     link, quantity, estimated_delivery, alarm_enabled, 
-                    is_delivered, position, notes, category
+                    is_delivered, position, notes, category,
+                    tracking_number, carrier, last_mile_carrier, site_order_id,
+                    status
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 order_data['order_date'],
                 order_data['platform'],
@@ -154,7 +166,12 @@ def add_order(order_data: Dict[str, Any]) -> Optional[int]:
                 order_data.get('is_delivered', False),
                 order_data.get('position', ''),
                 order_data.get('notes', ''),
-                order_data.get('category', '')
+                order_data.get('category', ''),
+                order_data.get('tracking_number', ''),
+                order_data.get('carrier', ''),
+                order_data.get('last_mile_carrier', ''),
+                order_data.get('site_order_id', ''),
+                order_data.get('status', 'In Attesa')
             ))
             
             order_id = cursor.lastrowid
@@ -242,6 +259,11 @@ def update_order(order_id: int, order_data: Dict[str, Any]) -> bool:
                     category = ?,
                     last_email_id = ?,
                     last_sync_at = ?,
+                    tracking_number = ?,
+                    carrier = ?,
+                    last_mile_carrier = ?,
+                    site_order_id = ?,
+                    status = ?,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             ''', (
@@ -260,6 +282,11 @@ def update_order(order_id: int, order_data: Dict[str, Any]) -> bool:
                 order_data.get('category', ''),
                 order_data.get('last_email_id', ''),
                 order_data.get('last_sync_at', ''),
+                order_data.get('tracking_number', ''),
+                order_data.get('carrier', ''),
+                order_data.get('last_mile_carrier', ''),
+                order_data.get('site_order_id', ''),
+                order_data.get('status', 'In Attesa'),
                 order_id
             ))
             

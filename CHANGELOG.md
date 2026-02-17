@@ -5,6 +5,13 @@ Tutte le modifiche importanti a questo progetto saranno documentate in questo fi
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/),
 e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/).
 
+## [2.0.1] - 2026-02-17
+ 
+### ✨ Modifiche
+- **Fix**: Risolto problema dipendenza mancante (`PyQt6-Charts`) che impediva l'avvio
+- **UI**: Aggiornate icone sidebar con versioni più intuitive (Home, Cartella, File, Computer)
+- **Docs**: Aggiornata documentazione e numeri di versione
+
 ## [2.0.0] - 2025-12-07
 
 ### ✨ Aggiunte

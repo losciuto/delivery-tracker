@@ -1,4 +1,4 @@
-# 📋 GUIDA: Come Usare i Campi Piattaforma e Categoria
+# 📋 GUIDA: Come Usare i Campi Piattaforma e Categoria v2.0.1
 
 ## ✅ Gli Elenchi CI SONO! (Verificato: 31 piattaforme + 31 categorie)
 

@@ -393,4 +393,4 @@ Un'applicazione **professionale, moderna e completa** per la gestione delle cons
 ---
 
 *Sviluppato con ❤️ da Antigravity & Gemini 3 Pro*
-*Data: 07 Dicembre 2025*
+*Data: 17 Febbraio 2026*

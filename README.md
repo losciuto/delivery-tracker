@@ -77,7 +77,7 @@ Un'applicazione desktop moderna e completa in Python per gestire le scadenze del
 
 1. Clona o scarica la repository:
 ```bash
-git clone <repository-url>
+git clone https://github.com/losciuto/delivery-tracker.git
 cd delivery-tracker
 ```
 

@@ -6,7 +6,7 @@
 
 ```bash
 # 1. Naviga nella directory del progetto
-cd /home/massimo/Scaricati/ProgettiAntigravity/delivery-tracker/delivery-tracker
+cd /home/massimo/Documenti/Massimo/ProgettiAntigravity/delivery-tracker
 
 # 2. Attiva l'ambiente virtuale
 source venv/bin/activate
@@ -237,9 +237,9 @@ python main.py  # Ricreerà il database vuoto
 delivery-tracker/
 ├── venv/                    # Ambiente virtuale Python
 ├── logs/                    # File di log giornalieri
-│   └── app_2025-12-07.log
+│   └── app_2026-02-17.log
 ├── backups/                 # Backup automatici database
-│   └── backup_20251207_103000.db
+│   └── backup_20260217_171500.db
 ├── delivery_tracker.db      # Database principale
 ├── settings.json            # Impostazioni utente
 └── [file Python...]

@@ -1,4 +1,4 @@
-# 🚀 Guida Rapida - Delivery Tracker v2.0.0
+# 🚀 Guida Rapida - Delivery Tracker v2.0.1
 
 ## ⚡ Avvio Rapido
 
@@ -277,7 +277,7 @@ I log si trovano in `logs/app_YYYY-MM-DD.log` e contengono informazioni dettagli
 
 - **README.md**: Documentazione completa
 - **CHANGELOG.md**: Storia modifiche
-- **IMPROVEMENTS.md**: Dettaglio miglioramenti v2.0.0
+- **IMPROVEMENTS.md**: Dettaglio miglioramenti v2.0.1
 - **LICENSE**: Licenza GPL-3.0
 
 ---

@@ -68,6 +68,8 @@ def init_db():
                     position TEXT,
                     notes TEXT,
                     category TEXT,
+                    last_email_id TEXT,
+                    last_sync_at TEXT,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
@@ -110,6 +112,8 @@ def init_db():
             migrations = [
                 ('position', 'ALTER TABLE orders ADD COLUMN position TEXT'),
                 ('category', 'ALTER TABLE orders ADD COLUMN category TEXT'),
+                ('last_email_id', 'ALTER TABLE orders ADD COLUMN last_email_id TEXT'),
+                ('last_sync_at', 'ALTER TABLE orders ADD COLUMN last_sync_at TEXT'),
                 ('created_at', 'ALTER TABLE orders ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP'),
                 ('updated_at', 'ALTER TABLE orders ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP'),
             ]
@@ -236,6 +240,8 @@ def update_order(order_id: int, order_data: Dict[str, Any]) -> bool:
                     position = ?,
                     notes = ?,
                     category = ?,
+                    last_email_id = ?,
+                    last_sync_at = ?,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             ''', (
@@ -252,6 +258,8 @@ def update_order(order_id: int, order_data: Dict[str, Any]) -> bool:
                 order_data.get('position', ''),
                 order_data.get('notes', ''),
                 order_data.get('category', ''),
+                order_data.get('last_email_id', ''),
+                order_data.get('last_sync_at', ''),
                 order_id
             ))
             

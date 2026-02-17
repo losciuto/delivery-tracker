@@ -300,6 +300,19 @@ class MainWindow(QMainWindow):
         orders_action.triggered.connect(lambda: self.content_stack.setCurrentIndex(0))
         view_menu.addAction(orders_action)
         
+        # Tools menu
+        tools_menu = menubar.addMenu("&Strumenti")
+        
+        sync_email_action = QAction("📧 Sincronizza Email", self)
+        sync_email_action.triggered.connect(self.sync_emails)
+        tools_menu.addAction(sync_email_action)
+        
+        tools_menu.addSeparator()
+        
+        settings_action = QAction("⚙️ Impostazioni", self)
+        settings_action.triggered.connect(self.show_settings)
+        tools_menu.addAction(settings_action)
+        
         # Help menu
         help_menu = menubar.addMenu("&Aiuto")
         
@@ -638,3 +651,38 @@ class MainWindow(QMainWindow):
             <p><b>Supporto:</b> {config.APP_SUPPORT}</p>
             """
         )
+
+    def sync_emails(self):
+        """Synchronize orders with email updates"""
+        from email_manager import EmailSyncManager
+        
+        # Check if email is enabled
+        if not self.settings.get('email_sync_enabled', False):
+            QMessageBox.warning(self, "Email Sync", "La sincronizzazione email non è abilitata nelle impostazioni.")
+            return
+
+        # Show progress
+        progress = QMessageBox(self)
+        progress.setWindowTitle("Sincronizzazione Email")
+        progress.setText("Connessione a Hotmail in corso...")
+        progress.setStandardButtons(QMessageBox.StandardButton.NoButton)
+        progress.show()
+        QApplication.processEvents()
+        
+        try:
+            sync_manager = EmailSyncManager()
+            count = sync_manager.sync_with_db()
+            
+            progress.close()
+            
+            if count > 0:
+                QMessageBox.information(self, "Email Sync", f"Sincronizzazione completata!\nAggiornati {count} ordini con nuove informazioni.")
+                self.refresh_data()
+            else:
+                # Specific check if no updates found
+                QMessageBox.information(self, "Email Sync", "Nessun nuovo aggiornamento trovato nelle email.")
+                
+        except Exception as e:
+            progress.close()
+            logger.error(f"Sync error: {e}")
+            QMessageBox.critical(self, "Errore Sync", f"Si è verificato un errore durante la sincronizzazione:\n{e}")

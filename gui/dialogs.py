@@ -248,6 +248,28 @@ class SettingsDialog(QDialog):
         notif_group.setLayout(notif_layout)
         layout.addWidget(notif_group)
         
+        # Email settings
+        email_group = QGroupBox("Integrazione Email (Hotmail/Outlook)")
+        email_layout = QFormLayout()
+        
+        self.email_sync_cb = QCheckBox()
+        self.email_sync_cb.setChecked(self.settings.get('email_sync_enabled', False))
+        email_layout.addRow("Abilita sincronizzazione:", self.email_sync_cb)
+        
+        self.email_addr_input = QLineEdit()
+        self.email_addr_input.setText(self.settings.get('email_address', ''))
+        self.email_addr_input.setPlaceholderText("esempio@hotmail.com")
+        email_layout.addRow("Indirizzo Email:", self.email_addr_input)
+        
+        self.email_pass_input = QLineEdit()
+        self.email_pass_input.setText(self.settings.get('email_password', ''))
+        self.email_pass_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.email_pass_input.setPlaceholderText("Password per l'app")
+        email_layout.addRow("Password App:", self.email_pass_input)
+        
+        email_group.setLayout(email_layout)
+        layout.addWidget(email_group)
+        
         # Backup settings
         backup_group = QGroupBox("Backup")
         backup_layout = QFormLayout()
@@ -292,6 +314,11 @@ class SettingsDialog(QDialog):
         self.settings['theme'] = 'light' if self.theme_combo.currentText() == "Chiaro" else 'dark'
         self.settings['show_delivered'] = self.show_delivered_cb.isChecked()
         self.settings['notification_enabled'] = self.notif_enabled_cb.isChecked()
+        
+        # Email settings
+        self.settings['email_sync_enabled'] = self.email_sync_cb.isChecked()
+        self.settings['email_address'] = self.email_addr_input.text().strip()
+        self.settings['email_password'] = self.email_pass_input.text().strip()
         
         try:
             self.settings['notification_days_before'] = int(self.notif_days_input.text())

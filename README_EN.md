@@ -1,4 +1,4 @@
-# Delivery Tracker v2.0.1
+# Delivery Tracker v2.0.2
 
 A modern and comprehensive Python desktop application to manage delivery deadlines from various online platforms.
 
@@ -179,7 +179,7 @@ delivery-tracker/
 - Restore from a backup in `backups/`
 - Or delete `delivery_tracker.db` to recreate it (you'll lose data)
 
-## 🔄 Updates v2.0.1
+## 🔄 Updates v2.0.2
 
 - ✅ **Fix**: Resolved missing dependency issue (PyQt6-Charts)
 - ✅ **UI**: More intuitive and modern sidebar icons

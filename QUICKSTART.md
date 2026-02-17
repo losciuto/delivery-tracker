@@ -1,21 +1,28 @@
-# 🚀 Guida Rapida - Delivery Tracker v2.0.1
+# 🚀 Guida Rapida - Delivery Tracker v2.0.2
 
 ## ⚡ Avvio Rapido
 
-### Su Linux con GUI
+### Installazione Automatica (Consigliato)
+
+```bash
+chmod +x setup.sh
+./setup.sh
+```
+
+### Avvio Manuale (Linux)
 
 ```bash
 # 1. Naviga nella directory del progetto
-cd /home/massimo/Documenti/Massimo/ProgettiAntigravity/delivery-tracker
+cd /percorso/della/cartella/delivery-tracker
 
 # 2. Attiva l'ambiente virtuale
 source venv/bin/activate
 
 # 3. Avvia l'applicazione
-python main.py
+python3 main.py
 ```
 
-### Usando lo Script di Avvio
+### Usando lo Script di Lancio
 
 ```bash
 ./run.sh
@@ -239,7 +246,7 @@ delivery-tracker/
 ├── logs/                    # File di log giornalieri
 │   └── app_2026-02-17.log
 ├── backups/                 # Backup automatici database
-│   └── backup_20260217_171500.db
+│   └── backup_202.0.27_171500.db
 ├── delivery_tracker.db      # Database principale
 ├── settings.json            # Impostazioni utente
 └── [file Python...]
@@ -277,7 +284,7 @@ I log si trovano in `logs/app_YYYY-MM-DD.log` e contengono informazioni dettagli
 
 - **README.md**: Documentazione completa
 - **CHANGELOG.md**: Storia modifiche
-- **IMPROVEMENTS.md**: Dettaglio miglioramenti v2.0.1
+- **IMPROVEMENTS.md**: Dettaglio miglioramenti v2.0.2
 - **LICENSE**: Licenza GPL-3.0
 
 ---

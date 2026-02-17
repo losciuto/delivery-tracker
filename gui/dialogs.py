@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QLineEdit, QDateEdit, QCheckBox, QTextEdit, QMessageBox,
     QGroupBox, QFormLayout, QComboBox
 )
-from PyQt6.QtCore import QDate
+from PyQt6.QtCore import QDate, pyqtSignal
 
 import config
 import utils
@@ -204,6 +204,8 @@ class OrderDialog(QDialog):
 class SettingsDialog(QDialog):
     """Settings dialog"""
     
+    theme_changed = pyqtSignal(str)
+    
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("⚙️ Impostazioni")
@@ -299,7 +301,8 @@ class SettingsDialog(QDialog):
         self.settings['auto_backup'] = self.auto_backup_cb.isChecked()
         
         if utils.Settings.save(self.settings):
-            QMessageBox.information(self, "Impostazioni", "Impostazioni salvate!\nRiavvia l'applicazione per applicare il tema.")
+            self.theme_changed.emit(self.settings['theme'])
+            QMessageBox.information(self, "Impostazioni", "Impostazioni salvate con successo!")
             self.accept()
         else:
             QMessageBox.warning(self, "Errore", "Errore nel salvataggio delle impostazioni")

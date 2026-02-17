@@ -5,6 +5,16 @@ Tutte le modifiche importanti a questo progetto saranno documentate in questo fi
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/),
 e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/).
 
+## [2.0.2] - 2026-02-17
+### ✨ Aggiunte
+- **Tema Dinamico**: Implementazione del cambio tema (Luce/Buio) in tempo reale senza riavvio.
+- **UI Intelligente**: Dimensionamento dinamico della finestra basato sulla risoluzione dello schermo.
+- **UX**: Centratura automatica della finestra all'avvio.
+
+### 🔧 Ottimizzazioni
+- Migliorato il sistema di refresh della tabella per evitare aggiornamenti ridondanti.
+- Ottimizzata la gestione delle larghezze delle colonne per monitor standard.
+
 ## [2.0.1] - 2026-02-17
  
 ### ✨ Modifiche

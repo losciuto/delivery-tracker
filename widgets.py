@@ -11,6 +11,7 @@ from PyQt6.QtGui import QFont, QPainter, QColor, QPen
 from PyQt6.QtCharts import QChart, QChartView, QPieSeries, QBarSeries, QBarSet, QBarCategoryAxis, QValueAxis
 from typing import Dict, Any, List
 import utils
+import config
 
 
 class StatCard(QFrame):
@@ -19,32 +20,42 @@ class StatCard(QFrame):
     def __init__(self, title: str, value: str, icon: str = "", color: str = "#2196F3", parent=None):
         super().__init__(parent)
         self.setFrameShape(QFrame.Shape.StyledPanel)
-        self.setStyleSheet(f"""
-            StatCard {{
-                background-color: white;
-                border-radius: 8px;
-                border: 1px solid #E0E0E0;
-                padding: 15px;
-            }}
-            StatCard:hover {{
-                border: 2px solid {color};
-            }}
-        """)
+        self.target_color = color
+        self.title = title
+        self.setup_ui(value)
+        self.update_theme()
         
+    def setup_ui(self, value):
         layout = QVBoxLayout(self)
         
         # Title
-        title_label = QLabel(title)
-        title_label.setStyleSheet("color: #757575; font-size: 12px; font-weight: normal;")
-        layout.addWidget(title_label)
+        self.title_label = QLabel(self.title)
+        layout.addWidget(self.title_label)
         
         # Value
-        value_label = QLabel(value)
-        value_label.setStyleSheet(f"color: {color}; font-size: 32px; font-weight: bold;")
-        layout.addWidget(value_label)
-        
-        self.value_label = value_label
+        self.value_label = QLabel(value)
+        layout.addWidget(self.value_label)
     
+    def update_theme(self):
+        """Update colors based on current theme"""
+        theme_name = utils.Settings.load().get('theme', 'light')
+        colors = config.LIGHT_THEME if theme_name == 'light' else config.DARK_THEME
+        
+        self.setStyleSheet(f"""
+            StatCard {{
+                background-color: {colors.bg_secondary};
+                border-radius: 8px;
+                border: 1px solid {colors.border};
+                padding: 15px;
+            }}
+            StatCard:hover {{
+                border: 2px solid {self.target_color};
+            }}
+        """)
+        
+        self.title_label.setStyleSheet(f"color: {colors.text_secondary}; font-size: 12px; font-weight: normal;")
+        self.value_label.setStyleSheet(f"color: {self.target_color}; font-size: 32px; font-weight: bold;")
+
     def update_value(self, value: str):
         """Update the displayed value"""
         self.value_label.setText(value)
@@ -56,6 +67,7 @@ class DashboardWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setup_ui()
+        self.update_theme()
     
     def setup_ui(self):
         """Setup the dashboard UI"""
@@ -64,9 +76,8 @@ class DashboardWidget(QWidget):
         main_layout.setSpacing(20)
         
         # Title
-        title = QLabel("📊 Dashboard")
-        title.setStyleSheet("font-size: 24px; font-weight: bold; color: #212121;")
-        main_layout.addWidget(title)
+        self.title_label = QLabel("📊 Dashboard")
+        main_layout.addWidget(self.title_label)
         
         # Stats Cards Container
         cards_layout = QGridLayout()
@@ -99,6 +110,36 @@ class DashboardWidget(QWidget):
         main_layout.addLayout(charts_layout)
         
         main_layout.addStretch()
+
+    def update_theme(self):
+        """Update dashboard theme"""
+        theme_name = utils.Settings.load().get('theme', 'light')
+        colors = config.LIGHT_THEME if theme_name == 'light' else config.DARK_THEME
+        
+        self.title_label.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {colors.text_primary};")
+        
+        # Update cards
+        self.total_card.update_theme()
+        self.pending_card.update_theme()
+        self.delivered_card.update_theme()
+        self.overdue_card.update_theme()
+        
+        # Update charts theme
+        chart_theme = QChart.ChartTheme.ChartThemeLight if theme_name == 'light' else QChart.ChartTheme.ChartThemeDark
+        self.platform_chart_view.chart().setTheme(chart_theme)
+        self.status_chart_view.chart().setTheme(chart_theme)
+        
+        # Refresh background colors for charts (some themes might need it)
+        bg_color = QColor(colors.bg_main)
+        self.platform_chart_view.chart().setBackgroundBrush(bg_color)
+        self.status_chart_view.chart().setBackgroundBrush(bg_color)
+        
+        # Text colors for charts
+        text_color = QColor(colors.text_primary)
+        self.platform_chart_view.chart().setTitleBrush(text_color)
+        self.status_chart_view.chart().setTitleBrush(text_color)
+        self.platform_chart_view.chart().legend().setLabelColor(text_color)
+        self.status_chart_view.chart().legend().setLabelColor(text_color)
     
     def create_pie_chart(self, title: str) -> QChartView:
         """Create a pie chart widget"""
@@ -182,6 +223,10 @@ class DashboardWidget(QWidget):
         chart = self.status_chart_view.chart()
         chart.removeAllSeries()
         
+        # Clear existing axes
+        for axis in chart.axes():
+            chart.removeAxis(axis)
+        
         # Create bar set
         bar_set = QBarSet("Ordini")
         bar_set.append(stats['overdue'])
@@ -204,9 +249,17 @@ class DashboardWidget(QWidget):
         series.attachAxis(axis_x)
         
         axis_y = QValueAxis()
-        axis_y.setRange(0, max(stats['overdue'], stats['due_today'], stats['upcoming'], stats['delivered']) + 5)
+        max_val = max(stats['overdue'], stats['due_today'], stats['upcoming'], stats['delivered'])
+        axis_y.setRange(0, max_val + (5 if max_val > 0 else 10))
         chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
         series.attachAxis(axis_y)
+        
+        # Apply labels colors
+        theme_name = utils.Settings.load().get('theme', 'light')
+        colors = config.LIGHT_THEME if theme_name == 'light' else config.DARK_THEME
+        text_color = QColor(colors.text_primary)
+        axis_x.setLabelsBrush(text_color)
+        axis_y.setLabelsBrush(text_color)
 
 
 class SearchFilterBar(QWidget):
@@ -286,6 +339,7 @@ class SearchFilterBar(QWidget):
     
     def update_platforms(self, platforms: List[str]):
         """Update platform filter options"""
+        self.platform_combo.blockSignals(True)
         current = self.platform_combo.currentData()
         self.platform_combo.clear()
         self.platform_combo.addItem("Tutte", "")
@@ -297,9 +351,11 @@ class SearchFilterBar(QWidget):
         index = self.platform_combo.findData(current)
         if index >= 0:
             self.platform_combo.setCurrentIndex(index)
+        self.platform_combo.blockSignals(False)
     
     def update_categories(self, categories: List[str]):
         """Update category filter options"""
+        self.category_combo.blockSignals(True)
         current = self.category_combo.currentData()
         self.category_combo.clear()
         self.category_combo.addItem("Tutte", "")
@@ -311,3 +367,4 @@ class SearchFilterBar(QWidget):
         index = self.category_combo.findData(current)
         if index >= 0:
             self.category_combo.setCurrentIndex(index)
+        self.category_combo.blockSignals(False)

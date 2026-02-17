@@ -1,8 +1,8 @@
-# 🎉 Riepilogo Miglioramenti - Delivery Tracker v2.0.1
+# 🎉 Riepilogo Miglioramenti - Delivery Tracker v2.0.2
 
 ## 📊 Panoramica
 
-Il progetto **Delivery Tracker** è stato completamente migliorato e potenziato dalla versione 1.1.1 alla **2.0.1**, con un focus su:
+Il progetto **Delivery Tracker** è stato completamente migliorato e potenziato dalla versione 1.1.1 alla **2.0.2**, con un focus su:
 - ✨ UI/UX moderna e premium
 - ⚡ Performance ottimizzate
 - 🚀 Nuove funzionalità avanzate
@@ -11,7 +11,7 @@ Il progetto **Delivery Tracker** è stato completamente migliorato e potenziato 
 
 ---
 
-## 🆕 Aggiornamento v2.0.1 (Febbraio 2026)
+## 🆕 Aggiornamento v2.0.2 (Febbraio 2026)
 
 ### 🛠️ Fix Critici
 - Risolto problema di dipendenza mancante (`PyQt6-Charts`) che impediva l'avvio su nuovi ambienti.

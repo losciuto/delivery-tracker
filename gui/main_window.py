@@ -28,7 +28,29 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"{config.APP_NAME} v{config.APP_VERSION}")
-        self.setMinimumSize(config.WINDOW_MIN_WIDTH, config.WINDOW_MIN_HEIGHT)
+        
+        # Dynamic window sizing based on screen resolution
+        from PyQt6.QtWidgets import QApplication
+        screen = QApplication.primaryScreen()
+        if screen:
+            screen_geom = screen.availableGeometry()
+            width = int(screen_geom.width() * 0.9)
+            height = int(screen_geom.height() * 0.85)
+            
+            # Ensure we don't go below config minimums
+            width = max(width, config.WINDOW_MIN_WIDTH)
+            height = max(height, config.WINDOW_MIN_HEIGHT)
+            
+            logger.info(f"Setting dynamic window size: {width}x{height} (Screen: {screen_geom.width()}x{screen_geom.height()})")
+            self.resize(width, height)
+            
+            # Center the window
+            x = (screen_geom.width() - width) // 2
+            y = (screen_geom.height() - height) // 2
+            self.move(x, y)
+        else:
+            self.setMinimumSize(config.WINDOW_MIN_WIDTH, config.WINDOW_MIN_HEIGHT)
+            self.resize(config.WINDOW_MIN_WIDTH, config.WINDOW_MIN_HEIGHT)
         
         # Load settings
         self.settings = utils.Settings.load()
@@ -208,6 +230,23 @@ class MainWindow(QMainWindow):
         self.table.setSortingEnabled(True)
         self.table.setAlternatingRowColors(True)
         self.table.hideColumn(0)  # Hide ID
+        
+        # Adjust column widths
+        self.table.setColumnWidth(8, 160)  # Cons. Prevista (leggermente più larga)
+        self.table.setColumnWidth(1, 100)  # Data
+        self.table.setColumnWidth(7, 60)   # Q.tà
+        self.table.setColumnWidth(11, 100) # Consegnato
+        
+        # Behavior for other columns
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)  # Descrizione
+        header.setSectionResizeMode(12, QHeaderView.ResizeMode.Stretch) # Note
+        
+        # Interactive for most, but ensure good initial fit
+        for i in [2, 3, 4, 6, 9, 10]:
+            header.setSectionResizeMode(i, QHeaderView.ResizeMode.Interactive)
+            self.table.setColumnWidth(i, 130)
+        
         self.table.doubleClicked.connect(self.edit_order)
         self.table.cellClicked.connect(self.on_cell_clicked)
         
@@ -326,6 +365,10 @@ class MainWindow(QMainWindow):
             category_filter=self.current_category_filter
         )
         
+        # Determine current theme colors
+        theme_name = self.settings.get('theme', 'light')
+        colors = config.LIGHT_THEME if theme_name == 'light' else config.DARK_THEME
+        
         for row, order in enumerate(orders):
             self.table.insertRow(row)
             
@@ -340,7 +383,7 @@ class MainWindow(QMainWindow):
             # Link with formatting
             link_item = QTableWidgetItem(order.get('link', ''))
             if order.get('link'):
-                link_item.setForeground(QBrush(QColor("blue")))
+                link_item.setForeground(QBrush(QColor("blue") if theme_name == 'light' else QColor("#64B5F6")))
                 font = link_item.font()
                 font.setUnderline(True)
                 link_item.setFont(font)
@@ -361,17 +404,17 @@ class MainWindow(QMainWindow):
 
             # Color rows based on status
             if order.get('is_delivered'):
-                color = QColor(config.LIGHT_THEME.delivered)
+                color = QColor(colors.delivered)
             elif order.get('estimated_delivery') and order.get('alarm_enabled'):
                 est_date = utils.DateHelper.parse_date(order['estimated_delivery'])
                 if est_date:
                     status = utils.DateHelper.get_date_status(est_date)
                     if status == 'overdue':
-                        color = QColor(config.LIGHT_THEME.overdue)
+                        color = QColor(colors.overdue)
                     elif status == 'due_today':
-                        color = QColor(config.LIGHT_THEME.due_today)
+                        color = QColor(colors.due_today)
                     elif status == 'upcoming':
-                        color = QColor(config.LIGHT_THEME.upcoming)
+                        color = QColor(colors.upcoming)
                     else:
                         color = None
                 else:
@@ -384,6 +427,8 @@ class MainWindow(QMainWindow):
                     item = self.table.item(row, col)
                     if item:
                         item.setBackground(color)
+                        # Ensure text is readable on colored background
+                        item.setForeground(QBrush(QColor("black") if theme_name == 'light' else QColor("white")))
         
         self.table.setSortingEnabled(True)
         logger.info(f"Table refreshed with {len(orders)} orders")
@@ -554,14 +599,32 @@ class MainWindow(QMainWindow):
     def show_settings(self):
         """Show settings dialog"""
         dialog = SettingsDialog(self)
+        # Store initial theme to check if it changed
+        initial_theme = self.settings.get('theme', 'light')
+        dialog.theme_changed.connect(self.apply_theme)
+        
         if dialog.exec():
-            # Reload settings if changed
+            # Reload settings
             self.settings = utils.Settings.load()
-            # Ask for restart if theme changed
-            # (In a real app, we might handle this more gracefully)
             
-            # Apply new settings immediately where possible
-            self.refresh_data()
+            # If theme didn't change (so apply_theme wasn't called via signal), 
+            # we still need to refresh for other settings (like show_delivered)
+            if self.settings.get('theme') == initial_theme:
+                self.refresh_data()
+
+    def apply_theme(self, theme_name):
+        """Apply theme in real-time"""
+        logger.info(f"Switching to {theme_name} theme...")
+        from PyQt6.QtWidgets import QApplication
+        QApplication.instance().setStyleSheet(utils.get_stylesheet(theme_name))
+        
+        # Update dashboard widget theme specifically
+        if hasattr(self, 'dashboard'):
+            self.dashboard.update_theme()
+            
+        # Update current settings object
+        self.settings['theme'] = theme_name
+        self.refresh_data()
 
     def show_about(self):
         """Show about dialog"""

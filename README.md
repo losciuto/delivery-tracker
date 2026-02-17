@@ -1,4 +1,4 @@
-# Scadenziario Consegne (Delivery Tracker) v2.0.1
+# Scadenziario Consegne (Delivery Tracker) v2.0.2
 
 Un'applicazione desktop moderna e completa in Python per gestire le scadenze delle consegne da diverse piattaforme online.
 
@@ -66,6 +66,21 @@ Un'applicazione desktop moderna e completa in Python per gestire le scadenze del
 - **Ordinamento Colonne**: Click su intestazioni per ordinare
 - **Tooltip**: Informazioni al passaggio del mouse
 
+## 📥 Installazione Rapida (Linux)
+
+Il modo più semplice per configurare tutto è usare lo script di setup automatizzato:
+
+```bash
+git clone https://github.com/losciuto/delivery-tracker.git
+cd delivery-tracker
+chmod +x setup.sh
+./setup.sh
+```
+
+Questo script configurerà l'ambiente virtuale, installerà le dipendenze e verificherà le librerie di sistema.
+
+---
+
 ## 🛠️ Requisiti
 
 - Python 3.8+
@@ -73,7 +88,9 @@ Un'applicazione desktop moderna e completa in Python per gestire le scadenze del
 - PyQt6-Charts
 - openpyxl (per export Excel)
 
-## 📥 Installazione
+## 📥 Installazione Manuale
+
+Se preferisci installare manualmente:
 
 1. Clona o scarica la repository:
 ```bash
@@ -81,14 +98,19 @@ git clone https://github.com/losciuto/delivery-tracker.git
 cd delivery-tracker
 ```
 
-2. Installa le dipendenze:
+2. Installa le dipendenze (si consiglia l'uso di un ambiente virtuale):
 ```bash
 pip install -r requirements.txt
 ```
 
 ## 🚀 Utilizzo
 
-Avvia l'applicazione con:
+Avvia l'applicazione con lo script di avvio rapido:
+```bash
+./run.sh
+```
+
+Oppure manualmente:
 ```bash
 python main.py
 ```
@@ -181,7 +203,7 @@ delivery-tracker/
 - Ripristina da un backup in `backups/`
 - O elimina `delivery_tracker.db` per ricrearlo (perderai i dati)
 
-## 🔄 Aggiornamenti v2.0.1
+## 🔄 Aggiornamenti v2.0.2
 
 - ✅ **Fix**: Risolto problema dipendenza mancante (PyQt6-Charts)
 - ✅ **UI**: Icone sidebar più intuitive e moderne

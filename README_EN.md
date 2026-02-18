@@ -1,4 +1,4 @@
-# Delivery Tracker v2.1.0
+# Delivery Tracker v2.2.0
 
 A modern and comprehensive Python desktop application to manage delivery deadlines from various online platforms.
 
@@ -74,6 +74,21 @@ A modern and comprehensive Python desktop application to manage delivery deadlin
 - **Column Sorting**: Click on headers to sort
 - **Tooltips**: Information on mouse hover
 
+## 📥 Quick Installation (Linux)
+
+The easiest way to set everything up is using the automated setup script:
+
+```bash
+git clone https://github.com/losciuto/delivery-tracker.git
+cd delivery-tracker
+chmod +x setup.sh
+./setup.sh
+```
+
+This script will configure the virtual environment, install dependencies, and verify system libraries.
+
+---
+
 ## 🛠️ Requirements
 
 - Python 3.8+
@@ -81,7 +96,9 @@ A modern and comprehensive Python desktop application to manage delivery deadlin
 - PyQt6-Charts
 - openpyxl (for Excel export)
 
-## 📥 Installation
+## 📥 Manual Installation
+
+If you prefer to install manually:
 
 1. Clone or download the repository:
 ```bash
@@ -89,7 +106,7 @@ git clone https://github.com/losciuto/delivery-tracker.git
 cd delivery-tracker
 ```
 
-2. Install dependencies:
+2. Install dependencies (virtual environment recommended):
 ```bash
 pip install -r requirements.txt
 ```
@@ -129,7 +146,10 @@ python main.py
 ```
 delivery-tracker/
 ├── main.py              # Entry point with styling
-├── gui.py               # Main graphical interface
+├── gui/                 # Graphical interface package
+│   ├── __init__.py      # Exposes MainWindow
+│   ├── main_window.py   # Main window logic
+│   └── dialogs.py       # Dialogs (Order, Settings)
 ├── database.py          # SQLite database management
 ├── config.py            # Configurations and themes
 ├── utils.py             # Utility and helper functions
@@ -186,6 +206,22 @@ delivery-tracker/
 ### Corrupted database
 - Restore from a backup in `backups/`
 - Or delete `delivery_tracker.db` to recreate it (you'll lose data)
+
+## 🔄 Updates v2.2.0
+- ✅ **Email Sync 2.0**:
+    - Dynamic IMAP scan based on active database platforms.
+    - Optimized support for **Too Good To Go**.
+    - Improved Temu ID extraction (15-20 digits support).
+    - Priority-based extraction (Order ID > Tracking) to prevent overlaps.
+    - "Smart State" logic: subject priority and order confirmation recognition.
+- ✅ **UI & UX**:
+    - **Order Grouping**: Dynamic highlighting of articles with the same Order ID.
+    - **Visual Indicator**: 🔗 icon for multiple-item orders.
+    - **Smart Duplication**: Feature to copy existing orders for faster entry.
+    - Default LIFO sorting and alphabetical ordering of platforms/categories.
+
+## 🔄 Updates v2.1.1
+- ✅ **Settings Fix**: Email field is now manually editable.
 
 ## 🔄 Updates v2.1.0
 - ✅ **Site Order ID**: New field for professional site tracking.

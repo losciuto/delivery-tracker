@@ -211,7 +211,7 @@ def get_orders(include_delivered: bool = True, search: str = '',
                 query += ' AND category = ?'
                 params.append(category_filter)
             
-            query += ' ORDER BY estimated_delivery ASC, created_at DESC'
+            query += ' ORDER BY created_at DESC, estimated_delivery ASC'
             
             cursor = conn.execute(query, params)
             orders = cursor.fetchall()

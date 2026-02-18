@@ -6,7 +6,7 @@ from datetime import datetime, date
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QLineEdit, QDateEdit, QCheckBox, QTextEdit, QMessageBox,
-    QGroupBox, QFormLayout, QComboBox
+    QGroupBox, QFormLayout, QComboBox, QWidget, QFrame, QTabWidget
 )
 from PyQt6.QtCore import QDate, pyqtSignal
 
@@ -29,9 +29,18 @@ class OrderDialog(QDialog):
         self.setup_ui()
 
     def setup_ui(self):
-        main_layout = QVBoxLayout()
+        # Main dialog layout
+        dialog_layout = QVBoxLayout(self)
+        dialog_layout.setContentsMargins(10, 10, 10, 10)
+        dialog_layout.setSpacing(10)
 
-        # Product Info Group
+        # Tab Widget Setup
+        self.tabs = QTabWidget()
+        
+        # --- TAB 1: PRODOTTO ---
+        product_tab = QWidget()
+        product_main_layout = QVBoxLayout(product_tab)
+        
         product_group = QGroupBox("📦 Informazioni Prodotto")
         product_layout = QFormLayout()
         
@@ -72,9 +81,13 @@ class OrderDialog(QDialog):
         product_layout.addRow("Categoria:", self.category_input)
         
         product_group.setLayout(product_layout)
-        main_layout.addWidget(product_group)
+        product_main_layout.addWidget(product_group)
+        self.tabs.addTab(product_tab, "📦 Prodotto")
 
-        # Delivery Info Group
+        # --- TAB 2: SPEDIZIONE ---
+        delivery_tab = QWidget()
+        delivery_main_layout = QVBoxLayout(delivery_tab)
+        
         delivery_group = QGroupBox("🚚 Dettagli Spedizione")
         delivery_layout = QFormLayout()
         
@@ -119,36 +132,65 @@ class OrderDialog(QDialog):
         delivery_layout.addRow("Stato:", checkbox_layout)
         
         delivery_group.setLayout(delivery_layout)
-        main_layout.addWidget(delivery_group)
+        delivery_main_layout.addWidget(delivery_group)
+        self.tabs.addTab(delivery_tab, "🚚 Spedizione")
 
-        # Notes Group
+        # --- TAB 3: NOTE ---
+        notes_tab = QWidget()
+        notes_main_layout = QVBoxLayout(notes_tab)
+        
         notes_group = QGroupBox("📝 Note")
         notes_layout = QVBoxLayout()
         self.notes_input = QTextEdit()
-        self.notes_input.setMaximumHeight(100)
         self.notes_input.setPlaceholderText("Eventuali note, difformità o difetti...")
         notes_layout.addWidget(self.notes_input)
         notes_group.setLayout(notes_layout)
-        main_layout.addWidget(notes_group)
+        notes_main_layout.addWidget(notes_group)
+        self.tabs.addTab(notes_tab, "📝 Note")
+        
+        dialog_layout.addWidget(self.tabs)
 
-        # Buttons
+        # Buttons (Fixed at the bottom, outside tabs)
         btn_layout = QHBoxLayout()
+        btn_layout.setContentsMargins(10, 0, 10, 5)
+        
         save_btn = QPushButton("💾 Salva")
+        save_btn.setFixedHeight(40)
         save_btn.clicked.connect(self.validate_and_accept)
         save_btn.setDefault(True)
         
         cancel_btn = QPushButton("❌ Annulla")
+        cancel_btn.setFixedHeight(40)
         cancel_btn.clicked.connect(self.reject)
         
         btn_layout.addStretch()
         btn_layout.addWidget(save_btn)
         btn_layout.addWidget(cancel_btn)
-        main_layout.addLayout(btn_layout)
-
-        self.setLayout(main_layout)
+        dialog_layout.addLayout(btn_layout)
 
         if self.order_data:
             self.load_data()
+
+        # Connect auto-alignment for text fields
+        self.setup_auto_align()
+
+    def setup_auto_align(self):
+        """Connect editingFinished to return cursor to position 0 for all text inputs"""
+        text_widgets = [
+            self.seller_input, self.desc_input, self.site_order_id_input, 
+            self.link_input, self.qty_input, self.destination_input, 
+            self.position_input, self.tracking_input, self.carrier_input, 
+            self.last_mile_input, self.platform_input, self.category_input
+        ]
+        
+        for widget in text_widgets:
+            if isinstance(widget, QLineEdit):
+                widget.editingFinished.connect(lambda w=widget: w.setCursorPosition(0))
+            elif isinstance(widget, QComboBox) and widget.isEditable():
+                line_edit = widget.lineEdit()
+                if line_edit:
+                    line_edit.editingFinished.connect(lambda le=line_edit: le.setCursorPosition(0))
+
 
     def load_data(self):
         """Load order data into form"""
@@ -301,7 +343,7 @@ class SettingsDialog(QDialog):
         self.email_addr_input = QLineEdit()
         self.email_addr_input.setText(self.settings.get('email_address', ''))
         self.email_addr_input.setPlaceholderText("esempio@hotmail.com")
-        self.email_addr_input.setReadOnly(True) # Now managed via OAuth
+        self.email_addr_input.setToolTip("Inserisci l'email manualmente o usa il pulsante 'Connetti' per l'autorizzazione automatica")
         email_layout.addRow("Account Collegato:", self.email_addr_input)
         
         self.connect_btn = QPushButton("Connetti Account Microsoft")

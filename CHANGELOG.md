@@ -4,6 +4,30 @@ Tutte le modifiche importanti a questo progetto saranno documentate in questo fi
 
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/),
 e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/).
+## [2.2.0] - 2026-02-18
+### ✨ Aggiunte
+- **Email Sync 2.0**:
+    - Scansione dinamica basata sulle piattaforme attive nel database per una maggiore efficienza.
+    - Supporto ottimizzato per nuove piattaforme, inclusa **Too Good To Go**.
+    - Estrazione ID Temu migliorata con supporto per lunghezze variabili (15-20 cifre).
+    - Logica "Smart State": priorità all'oggetto dell'email e riconoscimento intelligente delle conferme d'ordine per evitare stati errati.
+- **UI & UX**:
+    - **Raggruppamento Ordini**: Evidenziazione visiva dinamica degli articoli appartenenti allo stesso ordine del sito.
+    - **Indicatore Visivo**: Aggiunta icona 🔗 nella colonna ID Ordine per identificare ordini multipli.
+    - **Duplicazione Ordini**: Nuova funzione "Duplica" per copiare rapidamente ordini esistenti.
+    - Ordinamento LIFO (Last-In-First-Out) come impostazione predefinita per la visualizzazione.
+    - Alfabetizzazione automatica delle liste di piattaforme e categorie (mantenendo "Altro" alla fine).
+
+### 🔧 Fix & Miglioramenti
+- **Priorità Estrazione**: Gli ID Ordine specifici delle piattaforme hanno ora la precedenza sul tracking generico per evitare sovrapposizioni.
+- **Stabilità Email**: Risolti bug critici come `UnboundLocalError` e `NameError` durante la sincronizzazione.
+- **Filtraggio Cartelle**: Restrizione dei criteri di scansione IMAP per escludere sottocartelle personali e focalizzarsi solo su Inbox e piattaforme rilevanti.
+- **UI**: Corretta l'evidenziazione delle righe durante il raggruppamento per evitare conflitti visivi con gli allarmi di scadenza.
+
+## [2.1.1] - 2026-02-18
+### 🔧 Fix
+- **Impostazioni**: Abilitata la modifica manuale del campo "Account Collegato" (email) per una maggiore flessibilità, aggiungendo un tooltip informativo.
+
 ## [2.1.0] - 2026-02-17
 ### ✨ Aggiunte
 - **ID Ordine Sito**: Nuovo campo per tracciare l'ID dell'ordine direttamente dal sito del venditore (es. Amazon, eBay).

@@ -11,6 +11,7 @@ import msal
 import base64
 import utils
 import database
+from datetime import datetime, date, timedelta
 
 logger = utils.get_logger(__name__)
 
@@ -110,31 +111,57 @@ class EmailSyncManager:
                 folders_to_scan = ["INBOX"]
             logger.info(f"EMAIL-SYNC: Trovate {len(folder_list)} cartelle totali.")
             
-            # 2. Filter folders: only most relevant to avoid connection drops (too many commands)
-            relevant_names = ["inbox", "amazon", "ebay", "aliexpress", "alibaba", "subito", "temu", "order", "ordine", "spedizion", "shipp", "archivio", "archive"]
+            # 2. Filter folders dynamically based on active orders in DB
+            from database import get_orders
+            active_orders = get_orders(include_delivered=False)
+            active_platforms = set()
+            for o in active_orders:
+                p = o.get('platform', '').strip().lower()
+                if p: active_platforms.add(p)
+            
+            logger.info(f"EMAIL-SYNC: Piattaforme attive rilevate nel DB: {list(active_platforms)}")
+            
+            active_platform_list = list(active_platforms)
+            
             folders_to_scan = []
             for f in folder_list:
                 line = f.decode()
+                # Extract folder name (handling quoted names)
                 match = re.search(r'"([^"]+)"$', line) or re.search(r' ([^ ]+)$', line)
                 if match:
                     folder_name = match.group(1).strip()
                     lower_name = folder_name.lower()
-                    if any(rn in lower_name for rn in relevant_names):
+                    
+                    # USER REQUEST: "in inbox solamente" and specific platforms
+                    # 1. Exact match for INBOX
+                    if lower_name == "inbox":
                         folders_to_scan.append(folder_name)
+                    
+                    # 2. Folder contains an active platform name
+                    elif any(p in lower_name for p in active_platform_list):
+                        # Ensure it's not a generic personal folder matching by pure luck
+                        # (though p is relatively specific)
+                        folders_to_scan.append(folder_name)
+                    
+                    # 3. Generic order keywords
+                    elif any(kw in lower_name for kw in ["order", "ordine", "spedizion"]):
+                        # IMPORTANT: Avoid scanning personal subfolders of Inbox
+                        # unless they explicitly match a platform above.
+                        if "inbox/" not in lower_name:
+                            folders_to_scan.append(folder_name)
             
             # Limit to max 15 folders to prevent Outlook from closing connection
             folders_to_scan = folders_to_scan[:15]
             logger.info(f"EMAIL-SYNC: Cartelle selezionate per scansione (max 15): {folders_to_scan}")
             
             # 3. Scan each folder
-            from datetime import date, timedelta
             since_date = (date.today() - timedelta(days=15)).strftime("%d-%b-%Y")
             search_query = f'(SINCE "{since_date}")'
             
             # Keywords for Python-side filtering
             all_keywords = ["spedito", "consegnato", "tracking", "delivery", "shipped", 
                             "ordine", "order", "acquisto", "delivered", "dispatched",
-                            "transito", "transit", "partito", "consegna"]
+                            "transito", "transit", "partito", "consegna", "too good to go", "to good to go", "assegnazion"]
             
             for folder in folders_to_scan:
                 try:
@@ -192,11 +219,50 @@ class EmailSyncManager:
                             if not any(kw in subject.lower() for kw in all_keywords):
                                 continue
 
-                            # Extraction (Tracking, Dates, etc.)
-                            # ... (tracking patterns unchanged) ...
+                            # extraction of Tracking and Carrier
+                            tracking = None
+                            carrier = None
+                            site_order_id = None
+                            body = "" # Initialize to avoid UnboundLocalError
                             
-                            # extraction of Site Order ID (Amazon and standard patterns)
-                            # ... (patterns unchanged) ...
+                            # Clean body and subject for extraction
+                            content_to_scan = f"{subject} {body[:2000]}"
+
+                            # 1. Extraction of Site Order ID (Amazon, Temu, eBay etc.) - PRIORITY
+                            amazon_match = re.search(r'(\d{3}-\d{7}-\d{7})', content_to_scan)
+                            temu_match = re.search(r'(PO-\d{3}-\d{15,20})', content_to_scan)
+                            ebay_match = re.search(r'(\d{2}-\d{5}-\d{5})', content_to_scan)
+                            
+                            if amazon_match:
+                                site_order_id = amazon_match.group(1)
+                                carrier = "Amazon"
+                            elif temu_match:
+                                site_order_id = temu_match.group(1)
+                                carrier = "Temu"
+                            elif ebay_match:
+                                site_order_id = ebay_match.group(1)
+                                carrier = "eBay"
+
+                            # 2. Tracking patterns (standard)
+                            tracking_patterns = [
+                                r'(1Z[A-Z0-9]{16})',  # UPS
+                                r'(\d{10,14})',       # FedEx/DHL/GLS
+                                r'(0034\d{16})',      # Poste Italiane
+                                r'([A-Z0-9]{10,25})'  # Generic alphanumeric (at the end)
+                            ]
+                            
+                            for pattern in tracking_patterns:
+                                if tracking: break
+                                matches = re.finditer(pattern, content_to_scan)
+                                for match in matches:
+                                    potential = match.group(1)
+                                    # Avoid "stealing" the numeric part of the already found site_order_id
+                                    if site_order_id and potential in site_order_id:
+                                        continue
+                                    # Very basic heuristic: if it's in the subject or near "tracking" keyword
+                                    if potential in subject or "tracking" in content_to_scan.lower():
+                                        tracking = potential
+                                        break
                             
                             # extraction of Status
                             # ... (later in code) ...
@@ -226,20 +292,51 @@ class EmailSyncManager:
                             # Clean HTML if present
                             body = re.sub('<[^<]+?>', '', body) # Simple tag removal
                             
-                            # extraction of status - EN/IT keywords
-                            status = None
                             body_lower = body.lower()
                             subject_lower = subject.lower()
+
+                            if not carrier:
+                                if any(kw in subject_lower or kw in body_lower for kw in ["too good to go", "to good to go"]):
+                                    carrier = "Too Good To Go"
+                                elif "too good to go" in folder.lower() or "to good to go" in folder.lower():
+                                    carrier = "Too Good To Go"
+
+                            # --- extraction of status - EN/IT keywords ---
+                            status = None
                             
-                            if any(kw in subject_lower or kw in body_lower for kw in ["consegnato", "delivered", "consegna effettuata", "handed over"]):
+                            # 1. Subject priority: if subject says delivered/shipped, that's it.
+                            if any(kw in subject_lower for kw in ["consegnato", "delivered", "consegna effettuata", "handed over"]):
                                 status = "Consegnato"
-                            elif any(kw in subject_lower or kw in body_lower for kw in ["in consegna", "out for delivery", "arriverà oggi", "on its way", "today"]):
+                            elif any(kw in subject_lower for kw in ["in consegna", "out for delivery", "arriverà oggi"]):
                                 status = "In Consegna"
-                            elif any(kw in subject_lower or kw in body_lower for kw in ["in transito", "in transit", "partito", "at sorting", "departed"]):
-                                status = "In Transito"
-                            elif any(kw in subject_lower or kw in body_lower for kw in ["spedito", "shipped", "invio", "dispatched", "sent"]):
+                            elif any(kw in subject_lower for kw in ["spedito", "shipped", "invio", "dispatched", "sent", "partito"]):
                                 status = "Spedito"
-                            elif any(kw in subject_lower or kw in body_lower for kw in ["eccezione", "problema", "ritardo", "exception", "delay", "address", "failure"]):
+                            
+                            # 2. Identify if it's just a confirmation: if so, we don't want "Delivered" from body
+                            is_confirmation = any(kw in subject_lower for kw in ["conferma", "ricevuto", "grazie", "thank you", "confirmed", "riepilogo"])
+                            
+                            # 3. Body check (only if status not found in subject)
+                            if not status:
+                                # For Delivered: be more restrictive in body (avoid "will be delivered on...")
+                                if any(kw in body_lower for kw in ["consegna effettuata", "consegnato il", "stato consegnato", "delivered on"]):
+                                    # Confirmation emails often say "will be delivered", so we only accept "delivered on" or similar
+                                    if not is_confirmation:
+                                        status = "Consegnato"
+                                
+                                elif any(kw in body_lower for kw in ["in consegna", "out for delivery", "today", "oggi"]):
+                                    status = "In Consegna"
+                                
+                                elif any(kw in body_lower for kw in ["in transito", "in transit", "at sorting", "departed", "assegnato", "assegnazione"]):
+                                    status = "In Transito"
+                                
+                                elif any(kw in body_lower for kw in ["spedito", "shipped", "invio", "dispatched", "sent", "in spedizione"]):
+                                    status = "Spedito"
+                            
+                            # Default status for confirmation emails if not found otherwise
+                            if not status and is_confirmation:
+                                status = "In Transito"
+                                
+                            if any(kw in subject_lower or kw in body_lower for kw in ["eccezione", "problema", "ritardo", "exception", "delay", "address", "failure"]):
                                 status = "Problema/Eccezione"
                                 
                             updates.append({

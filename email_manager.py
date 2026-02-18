@@ -25,6 +25,27 @@ CLIENT_ID = "3932ab49-e115-44d6-964e-9b43a479c5bd"
 AUTHORITY = "https://login.microsoftonline.com/common"
 SCOPES = ["https://outlook.office.com/IMAP.AccessAsUser.All"]
 
+# Gerarchia degli stati: più alto = più avanzato
+STATUS_HIERARCHY = {
+    'In Attesa':          0,
+    'Problema/Eccezione': 1,
+    'Spedito':            2,
+    'In Transito':        3,
+    'In Consegna':        4,
+    'Consegnato':         5,
+}
+
+
+def _is_status_upgrade(current_status: Optional[str], new_status: Optional[str]) -> bool:
+    """Restituisce True solo se new_status è uguale o più avanzato di current_status.
+    Impedisce di retrocedere lo stato di un ordine già aggiornato."""
+    if not new_status:
+        return False
+    current_rank = STATUS_HIERARCHY.get(current_status or 'In Attesa', 0)
+    new_rank = STATUS_HIERARCHY.get(new_status, 0)
+    return new_rank >= current_rank
+
+
 class EmailSyncManager:
     """Manages email synchronization and parsing via OAuth2"""
     
@@ -376,93 +397,113 @@ class EmailSyncManager:
         
         applied_count = 0
         
+        # Load all active orders once (outside the loop for efficiency)
+        orders = database.get_orders(include_delivered=False)
+        
         for update in updates:
-            # Logic to find matching order
-            orders = database.get_orders(include_delivered=False)
-            matched_order = None
-            
             logger.info(f"EMAIL-SYNC: Tentativo matching per email: '{update['subject']}'")
             logger.info(f"EMAIL-SYNC: Dati estratti: Tracking={update['tracking']}, OrderID={update['site_order_id']}, Status={update['status']}")
-            # 1. Match by tracking number (Highest priority)
+
+            # Collect ALL matching orders (not just the first one).
+            # Multiple DB rows can share the same order (e.g. multi-item orders with the
+            # same site_order_id or tracking_number). They must all receive the same status.
+            matched_orders = []
+
+            # 1. Match by tracking number (highest priority) — collect ALL matches
             if update.get('tracking'):
                 for order in orders:
                     current_tracking = (order.get('tracking_number') or "").strip()
                     if current_tracking and current_tracking == update['tracking']:
-                        matched_order = order
-                        break
-            
-            # 2. Match by site_order_id (High priority)
-            if not matched_order and update.get('site_order_id'):
+                        matched_orders.append(order)
+
+            # 2. Match by site_order_id — collect ALL matches not already found
+            if update.get('site_order_id'):
+                already_ids = {o['id'] for o in matched_orders}
                 for order in orders:
+                    if order['id'] in already_ids:
+                        continue
                     current_site_id = (order.get('site_order_id') or "").strip()
                     if current_site_id and current_site_id == update['site_order_id']:
-                        matched_order = order
-                        break
-            
-            # 3. Match by keywords in subject/body vs order description (fallback)
-            if not matched_order:
+                        matched_orders.append(order)
+
+            # 3. Fallback: match by description keywords (only if nothing found above)
+            if not matched_orders:
                 for order in orders:
                     desc_lower = (order.get('description') or "").lower()
                     if desc_lower and (desc_lower in update['subject'].lower() or desc_lower in update['body_snippet'].lower()):
                         logger.info(f"EMAIL-SYNC: Match trovato tramite descrizione: '{desc_lower}'")
-                        matched_order = order
-                        break
-            
-            if not matched_order:
-                logger.info(f"EMAIL-SYNC: Nessun ordine corrispondente trovato in DB per questa email.")
-            
-            if matched_order:
-                # Update order status if not already updated by this email
-                if matched_order.get('last_email_id') != update['email_id']:
-                    # Determine new status/date from email
-                    is_delivered = any(kw in update['subject'].lower() for kw in ["consegnato", "delivered", "consegna effettuata"])
-                    
-                    # Try to find a date in the body if it's a delivery notification
-                    est_delivery = matched_order.get('estimated_delivery')
-                    date_match = re.search(r'(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})', update['body_snippet'])
-                    if date_match:
-                        # Simplistic date update: year-month-day
-                        d, m, y = date_match.groups()
-                        if len(y) == 2: y = "20" + y
-                        est_delivery = f"{y}-{m.zfill(2)}-{d.zfill(2)}"
+                        matched_orders.append(order)
+                        break  # description match is less reliable; take only the best one
 
-                    # Update DB
-                    update_data = dict(matched_order)
-                    update_data['last_email_id'] = update['email_id']
-                    update_data['last_sync_at'] = datetime.now().isoformat()
-                    
-                    # Update status and is_delivered
-                    if update.get('status'):
-                        update_data['status'] = update['status']
-                        if update['status'] == 'Consegnato':
-                            update_data['is_delivered'] = True
-                    
-                    # If we don't have a status but subject says delivered
-                    if not update.get('status'):
-                        is_delivered = any(kw in update['subject'].lower() for kw in ["consegnato", "delivered", "consegna effettuata"])
-                        if is_delivered:
-                            update_data['is_delivered'] = True
-                            update_data['status'] = "Consegnato"
+            if not matched_orders:
+                logger.info("EMAIL-SYNC: Nessun ordine corrispondente trovato in DB per questa email.")
+                continue
 
-                    # Persist new info if empty in DB
-                    if update.get('site_order_id') and not update_data.get('site_order_id'):
-                        update_data['site_order_id'] = update['site_order_id']
-                    if update.get('tracking') and not update_data.get('tracking_number'):
-                        update_data['tracking_number'] = update['tracking']
-                    if update.get('carrier') and not update_data.get('carrier'):
-                        update_data['carrier'] = update['carrier']
-                    if update.get('last_mile_carrier') and not update_data.get('last_mile_carrier'):
-                        update_data['last_mile_carrier'] = update['last_mile_carrier']
+            logger.info(f"EMAIL-SYNC: {len(matched_orders)} ordine/i corrispondente/i trovato/i.")
 
-                    if not is_delivered and est_delivery != matched_order.get('estimated_delivery'):
-                        update_data['estimated_delivery'] = est_delivery
-                    
-                    # Add a note about the email
-                    new_note = f"\n[Aggiornamento Email {datetime.now().strftime('%d/%m/%Y')}]: {update['subject']}"
-                    update_data['notes'] = (update_data['notes'] or "") + new_note
-                    
-                    if database.update_order(matched_order['id'], update_data):
-                        applied_count += 1
-                        logger.info(f"Updated order {matched_order['id']} from email: {update['subject']}")
-                            
+            # Pre-compute values shared across all matched orders
+            new_status = update.get('status')
+            is_delivered_from_subject = any(
+                kw in update['subject'].lower()
+                for kw in ["consegnato", "delivered", "consegna effettuata"]
+            )
+
+            date_match = re.search(r'(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})', update['body_snippet'])
+            parsed_est_delivery = None
+            if date_match:
+                d, m, y = date_match.groups()
+                if len(y) == 2:
+                    y = "20" + y
+                parsed_est_delivery = f"{y}-{m.zfill(2)}-{d.zfill(2)}"
+
+            # Apply update to EVERY matched order
+            for matched_order in matched_orders:
+                # Skip if this email was already applied to this specific order
+                if matched_order.get('last_email_id') == update['email_id']:
+                    continue
+
+                current_status = matched_order.get('status')
+                est_delivery = parsed_est_delivery or matched_order.get('estimated_delivery')
+
+                update_data = dict(matched_order)
+                update_data['last_email_id'] = update['email_id']
+                update_data['last_sync_at'] = datetime.now().isoformat()
+
+                # Update status only if it's an upgrade (never downgrade)
+                if new_status and _is_status_upgrade(current_status, new_status):
+                    update_data['status'] = new_status
+                    if new_status == 'Consegnato':
+                        update_data['is_delivered'] = True
+                    logger.info(f"EMAIL-SYNC: Ordine {matched_order['id']}: stato '{current_status}' -> '{new_status}'")
+                elif new_status:
+                    logger.info(f"EMAIL-SYNC: Ordine {matched_order['id']}: stato ignorato (retrocessione) '{current_status}' -> '{new_status}'")
+
+                # Fallback: no status extracted but subject says delivered
+                if not new_status and is_delivered_from_subject:
+                    if _is_status_upgrade(current_status, 'Consegnato'):
+                        update_data['is_delivered'] = True
+                        update_data['status'] = 'Consegnato'
+
+                # Persist new info only if the field is currently empty in DB
+                if update.get('site_order_id') and not update_data.get('site_order_id'):
+                    update_data['site_order_id'] = update['site_order_id']
+                if update.get('tracking') and not update_data.get('tracking_number'):
+                    update_data['tracking_number'] = update['tracking']
+                if update.get('carrier') and not update_data.get('carrier'):
+                    update_data['carrier'] = update['carrier']
+                if update.get('last_mile_carrier') and not update_data.get('last_mile_carrier'):
+                    update_data['last_mile_carrier'] = update['last_mile_carrier']
+
+                # Update estimated delivery only if not yet delivered and date changed
+                if not update_data.get('is_delivered') and parsed_est_delivery and parsed_est_delivery != matched_order.get('estimated_delivery'):
+                    update_data['estimated_delivery'] = parsed_est_delivery
+
+                # Append a note about the email update
+                new_note = f"\n[Aggiornamento Email {datetime.now().strftime('%d/%m/%Y')}]: {update['subject']}"
+                update_data['notes'] = (update_data.get('notes') or "") + new_note
+
+                if database.update_order(matched_order['id'], update_data):
+                    applied_count += 1
+                    logger.info(f"EMAIL-SYNC: Ordine {matched_order['id']} aggiornato da email: {update['subject']}")
+
         return applied_count

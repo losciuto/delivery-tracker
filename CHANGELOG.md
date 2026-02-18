@@ -19,6 +19,7 @@ e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/)
     - Alfabetizzazione automatica delle liste di piattaforme e categorie (mantenendo "Altro" alla fine).
 
 ### 🔧 Fix & Miglioramenti
+- **Temu Parser**: Implementata logica di "Section Isolation" (scraping) per escludere correttamente suggerimenti e articoli consigliati dall'estrazione dell'ordine.
 - **Priorità Estrazione**: Gli ID Ordine specifici delle piattaforme hanno ora la precedenza sul tracking generico per evitare sovrapposizioni.
 - **Stabilità Email**: Risolti bug critici come `UnboundLocalError` e `NameError` durante la sincronizzazione.
 - **Filtraggio Cartelle**: Restrizione dei criteri di scansione IMAP per escludere sottocartelle personali e focalizzarsi solo su Inbox e piattaforme rilevanti.

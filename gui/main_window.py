@@ -18,6 +18,8 @@ import config
 import utils
 from widgets import DashboardWidget, SearchFilterBar
 from gui.dialogs import OrderDialog, SettingsDialog
+from gui.import_html_dialog import ImportHtmlDialog
+from gui.browser_import_dialog import BrowserImportDialog
 
 logger = utils.get_logger(__name__)
 
@@ -183,6 +185,12 @@ class MainWindow(QMainWindow):
         add_btn = self.create_sidebar_btn("Aggiungi", QStyle.StandardPixmap.SP_FileDialogNewFolder, self.add_order)
         sidebar_layout.addWidget(add_btn)
 
+        html_btn = self.create_sidebar_btn("Importa HTML", QStyle.StandardPixmap.SP_FileDialogContentsView, self.import_from_html)
+        sidebar_layout.addWidget(html_btn)
+
+        url_btn = self.create_sidebar_btn("Importa da URL", QStyle.StandardPixmap.SP_BrowserReload, self.import_from_url) # Using reload icon temporarily
+        sidebar_layout.addWidget(url_btn)
+
         dup_btn = self.create_sidebar_btn("Duplica", QStyle.StandardPixmap.SP_FileDialogDetailedView, self.duplicate_order)
         sidebar_layout.addWidget(dup_btn)
 
@@ -343,6 +351,14 @@ class MainWindow(QMainWindow):
         self.sync_email_action = QAction("📧 Sincronizza Email", self)
         self.sync_email_action.triggered.connect(self.sync_emails)
         self.tools_menu.addAction(self.sync_email_action)
+
+        import_html_action = QAction("📋 Importa da HTML", self)
+        import_html_action.triggered.connect(self.import_from_html)
+        self.tools_menu.addAction(import_html_action)
+
+        import_url_action = QAction("🌐 Importa da URL", self)
+        import_url_action.triggered.connect(self.import_from_url)
+        self.tools_menu.addAction(import_url_action)
 
         self.tools_menu.addSeparator()
 
@@ -663,6 +679,18 @@ class MainWindow(QMainWindow):
                 self.refresh_data()
             else:
                 QMessageBox.warning(self, "Errore", "Errore durante l'aggiunta dell'ordine")
+
+    def import_from_html(self):
+        """Open the HTML import dialog"""
+        dialog = ImportHtmlDialog(self)
+        if dialog.exec():
+            self.refresh_data()
+
+    def import_from_url(self):
+        """Open the Browser URL import dialog"""
+        dialog = BrowserImportDialog(self)
+        if dialog.exec():
+            self.refresh_data()
 
     def duplicate_order(self):
         """Duplicate selected order"""

@@ -1,4 +1,4 @@
-# Scadenziario Consegne (Delivery Tracker) v2.5.0
+# Scadenziario Consegne (Delivery Tracker) v2.5.1
 
 Un'applicazione desktop moderna e completa in Python per gestire le scadenze delle consegne da diverse piattaforme online.
 

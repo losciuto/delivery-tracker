@@ -1,6 +1,19 @@
-# Delivery Tracker v2.3.0
+# Delivery Tracker v2.5.1
 
 A modern and comprehensive Python desktop application to manage delivery deadlines from various online platforms.
+
+## 🔄 Updates v2.5.1
+- ✅ **Maintenance Cleanup**: Removed obsolete HTML parsers, test scripts, and temporary documentation for a cleaner project structure.
+- ✅ **Repository Optimization**: Streamlined project files and removed residue from older versions.
+
+## 🔄 Updates v2.5.0
+- ✅ **Extreme Performance**: Implemented O(1) in-memory lookup for duplicate detection. Analysis is now instantaneous even with thousands of orders.
+- ✅ **Smart Date Parser**: New intelligent parser recognizes international formats, natural language (IT/EN), and varied separators.
+- ✅ **Fuzzy Toolkit**: Centralized text comparison logic in `utils.py` for consistent "Best-Match" behavior.
+- ✅ **UI Similarity Disclosure**: Import dialog now shows exact similarity percentages in tooltips.
+
+## 🔄 Updates v2.4.0
+Features
 
 ## ✨ Main Features
 

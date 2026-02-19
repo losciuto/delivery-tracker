@@ -4,6 +4,12 @@ Tutte le modifiche importanti a questo progetto saranno documentate in questo fi
 
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/),
 e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/).
+## [2.5.1] - 2026-02-19
+### 🧹 Pulizia e Manutenzione
+- **Rimozione File Obsoleti**: Eliminati vecchi parser HTML, script di test e verifica non più necessari per il corretto funzionamento dell'applicazione.
+- **Cleanup Documentazione**: Rimossi file di testo temporanei e note di ricerca per mantenere la struttura del progetto snella e focalizzata.
+- **Ottimizzazione Repository**: Ridotto l'ingombro del repository eliminando file superflui e residui di vecchie versioni.
+
 ## [2.5.0] - 2026-02-19
 ### 🚀 Ottimizzazioni di Performance
 - **Lookup Duplicati O(1)**: Ridisegnata la logica di ricerca duplicati utilizzando mappe di hash (indici in memoria) per ID Ordine e Tracking. Questo riduce drasticamente i tempi di importazione per file di grandi dimensioni.

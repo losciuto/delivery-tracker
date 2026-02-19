@@ -143,6 +143,80 @@ class DateHelper:
             return "upcoming"
         return "normal"
 
+    @staticmethod
+    def parse_smart(date_str: str) -> Optional[date]:
+        """Try to parse date string using multiple formats and languages"""
+        if not date_str or not isinstance(date_str, str):
+            if isinstance(date_str, (date, datetime)):
+                return date_str if isinstance(date_str, date) else date_str.date()
+            return None
+            
+        date_str = date_str.lower().strip()
+        
+        # Standard formats
+        formats = [
+            '%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', 
+            '%Y/%m/%d', '%d.%m.%Y', '%m/%d/%Y'
+        ]
+        
+        for fmt in formats:
+            try:
+                return datetime.strptime(date_str, fmt).date()
+            except ValueError:
+                continue
+                
+        # Natural language (Italian/English)
+        months_it = {
+            'gen': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'mag': 5, 'giu': 6,
+            'lug': 7, 'ago': 8, 'set': 9, 'ott': 10, 'nov': 11, 'dic': 12,
+            'gennaio': 1, 'febbraio': 2, 'marzo': 3, 'aprile': 4, 'maggio': 5,
+            'giugno': 6, 'luglio': 7, 'agosto': 8, 'settembre': 9,
+            'ottobre': 10, 'novembre': 11, 'dicembre': 12
+        }
+        months_en = {
+            'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+            'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
+            'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5,
+            'june': 6, 'july': 7, 'august': 8, 'september': 9,
+            'october': 10, 'november': 11, 'december': 12
+        }
+        
+        all_months = {**months_it, **months_en}
+        
+        # Try to match formats like "14 feb 2026" or "feb 14, 2026"
+        import re
+        parts = re.split(r'[,.\s/-]+', date_str)
+        
+        day = None
+        month = None
+        year = None
+        
+        for p in parts:
+            if p in all_months:
+                month = all_months[p]
+            elif p.isdigit():
+                val = int(p)
+                if val > 2000:
+                    year = val
+                elif val <= 31:
+                    if day is None:
+                        day = val
+                    else:
+                        # Could be month digit
+                        if month is None and val <= 12:
+                            month = val
+                        else:
+                            # Already have day, maybe this is year in 2-digit?
+                            if year is None: year = 2000 + val
+                            
+        if day and month and year:
+            try:
+                return date(year, month, day)
+            except ValueError:
+                pass
+                
+        return None
+
 
 class BackupManager:
     """Database backup management"""
@@ -290,6 +364,33 @@ class StatisticsCalculator:
             'platforms': platforms,
             'delivery_rate': (delivered / total * 100) if total > 0 else 0
         }
+
+
+class TextMatcher:
+    """Utility for fuzzy text matching and tokenization"""
+    
+    @staticmethod
+    def get_tokens(text: str) -> set[str]:
+        """Lowercase, keep alphanumeric tokens only, ignore very short words"""
+        if not text:
+            return set()
+        import re
+        # Support various languages by keeping word characters
+        words = re.findall(r'\w+', str(text).lower())
+        return {w for w in words if len(w) > 1}
+
+    @staticmethod
+    def calculate_similarity(text1: str, text2: str) -> float:
+        """Calculate similarity between two strings using token intersection ratio"""
+        tokens1 = TextMatcher.get_tokens(text1)
+        tokens2 = TextMatcher.get_tokens(text2)
+        
+        if not tokens1 or not tokens2:
+            return 0.0
+            
+        intersection = tokens1.intersection(tokens2)
+        # Ratio of common tokens to the larger set size
+        return len(intersection) / max(len(tokens1), len(tokens2))
 
 
 def get_stylesheet(theme='light'):

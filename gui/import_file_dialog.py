@@ -235,73 +235,68 @@ class ImportFileDialog(QDialog):
     def _find_duplicates(self, orders: list) -> dict:
         """
         Check each parsed order against the DB.
-        Matches on site_order_id/tracking AND description (Best Match).
-        Returns {row_index: existing_order_dict}.
+        Optimized version v2.5.0 using lookup maps (O(N+M)).
         """
-        import re
+        from utils import TextMatcher
         all_orders = database.get_orders(include_delivered=True)
         dup_map = {}
 
-        def get_tokens(text):
-            if not text: return set()
-            # Lowercase, keep alphanumeric tokens only, ignore very short words
-            words = re.findall(r'\w+', text.lower())
-            return {w for w in words if len(w) > 1}
-
-        def calculate_similarity(tokens1, tokens2):
-            if not tokens1 or not tokens2: return 0.0
-            intersection = tokens1.intersection(tokens2)
-            # Use Jaccard-like or simple intersection ratio
-            return len(intersection) / max(len(tokens1), len(tokens2))
+        # 1. Build lookup maps for O(1) matching on IDs
+        site_id_map = {}    # site_order_id -> list of orders
+        tracking_map = {}   # tracking_number -> list of orders
+        
+        for ex in all_orders:
+            sid = (ex.get('site_order_id') or '').strip()
+            trn = (ex.get('tracking_number') or '').strip()
+            if sid:
+                if sid not in site_id_map: site_id_map[sid] = []
+                site_id_map[sid].append(ex)
+            if trn:
+                if trn not in tracking_map: tracking_map[trn] = []
+                tracking_map[trn].append(ex)
 
         for row, order in enumerate(orders):
             new_site_id  = (order.get('site_order_id') or '').strip()
             new_tracking = (order.get('tracking_number') or '').strip()
             new_desc     = (order.get('description') or '').strip()
-            new_tokens   = get_tokens(new_desc)
             
-            # Phase 1: Filter possible candidates by ID or Tracking
+            # Phase 1: Filter candidates using maps
             candidates = []
-            for existing in all_orders:
-                ex_site_id  = (existing.get('site_order_id') or '').strip()
-                ex_tracking = (existing.get('tracking_number') or '').strip()
-                
-                match_id = new_site_id and ex_site_id and new_site_id == ex_site_id
-                match_track = new_tracking and ex_tracking and new_tracking == ex_tracking
-                
-                if match_id or match_track:
-                    candidates.append(existing)
+            if new_site_id in site_id_map:
+                candidates.extend(site_id_map[new_site_id])
+            if new_tracking in tracking_map:
+                # Avoid duplicates in candidates list
+                existing_pks = {c['id'] for c in candidates}
+                for tr_cand in tracking_map[new_tracking]:
+                    if tr_cand['id'] not in existing_pks:
+                        candidates.append(tr_cand)
 
-            # Phase 2: If candidates exist, find the best match by description
+            # Phase 2: Find best match among candidates
             best_existing = None
             if candidates:
                 max_sim = -1.0
                 for cand in candidates:
-                    cand_tokens = get_tokens(cand.get('description', ''))
-                    sim = calculate_similarity(new_tokens, cand_tokens)
+                    sim = TextMatcher.calculate_similarity(new_desc, cand.get('description', ''))
                     if sim > max_sim:
                         max_sim = sim
                         best_existing = cand
                 
-                # Minimum threshold for multi-item orders: 0.2 (at least some shared keywords)
-                if max_sim < 0.2:
-                    # If very low similarity, maybe it's a different item in same order but we don't have it yet
-                    # However, if it matched ID/Tracking, it's safer to consider it a duplicate for merge
-                    # unless we are sure it's NEW.
-                    pass
-
-            # Phase 3: Fallback - Search ALL orders by description if no ID match
-            if not best_existing and new_tokens:
+                order['_dup_similarity'] = max_sim
+            
+            # Phase 3: Fallback - Search ALL if no ID match (O(N*M) but only for unmatched)
+            if not best_existing and new_desc:
                 max_sim = 0.0
+                best_match = None
                 for ex in all_orders:
-                    ex_tokens = get_tokens(ex.get('description', ''))
-                    sim = calculate_similarity(new_tokens, ex_tokens)
+                    sim = TextMatcher.calculate_similarity(new_desc, ex.get('description', ''))
                     if sim > max_sim:
                         max_sim = sim
-                        best_existing = ex
+                        best_match = ex
                 
-                # Threshold for description-only match: 0.6 (fairly strict)
-                if max_sim < 0.6:
+                if best_match and max_sim >= 0.6:
+                    best_existing = best_match
+                    order['_dup_similarity'] = max_sim
+                else:
                     best_existing = None
 
             if best_existing:
@@ -360,8 +355,10 @@ class ImportFileDialog(QDialog):
             if is_dup:
                 existing = self._duplicate_map[row]
                 dup_color = QColor('#FFF3E0')
+                sim_pct = order.get('_dup_similarity', 0.0) * 100
                 tooltip = (
                     f"⚠️ Già presente in DB (ID {existing['id']}):\n"
+                    f"  Somiglianza: {sim_pct:.1f}%\n"
                     f"  Descrizione: {existing.get('description', '')}\n"
                     f"  Stato: {existing.get('status', '')}\n"
                     f"  ID Ordine: {existing.get('site_order_id', '')}\n"

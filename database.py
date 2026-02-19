@@ -333,26 +333,30 @@ def merge_order_data(order_id: int, new_data: Dict[str, Any]) -> bool:
             old_val = existing.get(field)
             
             # Fill if old is empty and new is not
-            if new_val and (old_val is None or str(old_val).strip() == ''):
-                merged_data[field] = new_val
-                changes_made = True
+            if new_val and (old_val is None or str(old_val).strip() in ('', 'None')):
+                # Even if old is "empty", check if new_val is actually different from current cleaned state
+                if str(new_val).strip() != str(old_val).strip():
+                    merged_data[field] = new_val
+                    changes_made = True
 
         # Special case: Status
-        # If current status is 'In Attesa' and new status is different and not 'In Attesa'
         new_status = new_data.get('status')
         if new_status and new_status != 'In Attesa' and existing.get('status') == 'In Attesa':
             merged_data['status'] = new_status
             changes_made = True
 
         # Special case: Quantity
-        new_qty = new_data.get('quantity', 1)
+        new_qty = 1
+        try: new_qty = int(new_data.get('quantity', 1))
+        except: pass
+        
         if new_qty > existing.get('quantity', 1):
             merged_data['quantity'] = new_qty
             changes_made = True
 
         # Special case: Notes (append if new notes added)
-        new_notes = new_data.get('notes', '').strip()
-        if new_notes and new_notes not in existing.get('notes', ''):
+        new_notes = str(new_data.get('notes', '')).strip()
+        if new_notes and new_notes not in str(existing.get('notes', '')):
             if existing.get('notes'):
                 merged_data['notes'] = existing['notes'] + "\n" + new_notes
             else:

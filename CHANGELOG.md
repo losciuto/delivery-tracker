@@ -4,6 +4,18 @@ Tutte le modifiche importanti a questo progetto saranno documentate in questo fi
 
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/),
 e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/).
+## [2.5.0] - 2026-02-19
+### 🚀 Ottimizzazioni di Performance
+- **Lookup Duplicati O(1)**: Ridisegnata la logica di ricerca duplicati utilizzando mappe di hash (indici in memoria) per ID Ordine e Tracking. Questo riduce drasticamente i tempi di importazione per file di grandi dimensioni.
+- **Atomic Merge**: Ottimizzata la funzione di unione dati per evitare scritture ridondanti sul database se non vengono rilevati cambiamenti reali.
+- **Refactoring TextMatcher**: Centralizzata la logica di confronto fuzzy e tokenizzazione in un modulo core (`utils.py`) per una maggiore coerenza e manutenibilità.
+
+### ✨ Miglioramenti UI & UX
+- **Analisi Somiglianza nel Tooltip**: Il dialogo di importazione ora mostra la percentuale esatta di somiglianza testuale calcolata per ogni articolo duplicato, offrendo maggiore trasparenza sulle decisioni del "Best-Match".
+
+### 🔧 Robustezza
+- **Smart Date Parser**: Implementato un parser di date intelligente capace di interpretare formati internazionali, date in linguaggio naturale (IT/EN) e variazioni di separatori.
+
 ## [2.4.0] - 2026-02-19
 ### ✨ Aggiunte
 - **Merge Intelligente Duplicati**: Nuova funzionalità per unire dati da file esterni in ordini già presenti nel database.

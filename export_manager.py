@@ -108,6 +108,14 @@ def _cast_row(row_dict: Dict[str, Any]) -> Dict[str, Any]:
         v = str(result['alarm_enabled']).lower().strip()
         result['alarm_enabled'] = v in ('true', '1', 'yes', 'sì', 'si')
 
+    # Dates: normalize to ISO string or None
+    for date_field in ('order_date', 'estimated_delivery'):
+        if date_field in result:
+            val = result[date_field]
+            if val:
+                parsed = utils.DateHelper.parse_smart(str(val))
+                result[date_field] = parsed.strftime('%Y-%m-%d') if parsed else str(val)
+
     # Strip strings
     for k, v in result.items():
         if isinstance(v, str):

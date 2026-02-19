@@ -8,7 +8,7 @@ from enum import Enum
 
 # Application Info
 APP_NAME = "Scadenziario Consegne"
-APP_VERSION = "2.4.0"
+APP_VERSION = "2.5.0"
 APP_AUTHOR = "Massimo Lo Sciuto"
 APP_SUPPORT = "Antigravity"
 APP_DEVELOPER = "Gemini 3 Pro"

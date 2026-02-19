@@ -65,3 +65,9 @@ htmlcov/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+
+# Import Files
+*.xlsx
+*.xls
+*.csv
+*.json

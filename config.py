@@ -8,7 +8,7 @@ from enum import Enum
 
 # Application Info
 APP_NAME = "Scadenziario Consegne"
-APP_VERSION = "2.2.0"
+APP_VERSION = "2.2.1"
 APP_AUTHOR = "Massimo Lo Sciuto"
 APP_SUPPORT = "Antigravity"
 APP_DEVELOPER = "Gemini 3 Pro"
@@ -20,8 +20,8 @@ BACKUP_DIR = "backups"
 # UI Constants
 SIDEBAR_WIDTH_EXPANDED = 220
 SIDEBAR_WIDTH_COLLAPSED = 60
-WINDOW_MIN_WIDTH = 1200
-WINDOW_MIN_HEIGHT = 700
+WINDOW_MIN_WIDTH = 1000
+WINDOW_MIN_HEIGHT = 600
 ICON_SIZE = 24
 
 class Theme(Enum):

@@ -1,4 +1,4 @@
-# Delivery Tracker v2.2.0
+# Delivery Tracker v2.2.1
 
 A modern and comprehensive Python desktop application to manage delivery deadlines from various online platforms.
 
@@ -206,6 +206,10 @@ delivery-tracker/
 ### Corrupted database
 - Restore from a backup in `backups/`
 - Or delete `delivery_tracker.db` to recreate it (you'll lose data)
+
+## 🔄 Updates v2.2.1
+- ✅ **UI Optimization**: Improved layout for 19" monitors and sidebar reorganization.
+- ✅ **Quick Actions**: Refresh button moved to a priority position.
 
 ## 🔄 Updates v2.2.0
 - ✅ **Email Sync 2.0**:

@@ -143,8 +143,8 @@ class MainWindow(QMainWindow):
         self.is_collapsed = False
 
         sidebar_layout = QVBoxLayout(self.sidebar_widget)
-        sidebar_layout.setContentsMargins(10, 15, 10, 15)
-        sidebar_layout.setSpacing(10)
+        sidebar_layout.setContentsMargins(10, 5, 10, 5)
+        sidebar_layout.setSpacing(5)
 
         # Toggle button
         self.toggle_btn = QPushButton()
@@ -156,7 +156,7 @@ class MainWindow(QMainWindow):
         # Title
         self.title_label = QLabel("MENU")
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.title_label.setStyleSheet("font-size: 18px; font-weight: bold; margin-bottom: 10px;")
+        self.title_label.setStyleSheet("font-size: 18px; font-weight: bold; margin-bottom: 2px;")
         sidebar_layout.addWidget(self.title_label)
 
         # Navigation buttons
@@ -164,7 +164,7 @@ class MainWindow(QMainWindow):
 
         # View buttons
         view_label = QLabel("VISUALIZZA")
-        view_label.setStyleSheet("font-size: 11px; color: #757575; margin-top: 10px;")
+        view_label.setStyleSheet("font-size: 11px; color: #757575; margin-top: 5px;")
         sidebar_layout.addWidget(view_label)
         self.sidebar_buttons.append((view_label, ""))
 
@@ -178,18 +178,15 @@ class MainWindow(QMainWindow):
 
         # Action buttons
         action_label = QLabel("AZIONI")
-        action_label.setStyleSheet("font-size: 11px; color: #757575; margin-top: 15px;")
+        action_label.setStyleSheet("font-size: 11px; color: #757575; margin-top: 5px;")
         sidebar_layout.addWidget(action_label)
         self.sidebar_buttons.append((action_label, ""))
 
         add_btn = self.create_sidebar_btn("Aggiungi", QStyle.StandardPixmap.SP_FileDialogNewFolder, self.add_order)
         sidebar_layout.addWidget(add_btn)
 
-        html_btn = self.create_sidebar_btn("Importa HTML", QStyle.StandardPixmap.SP_FileDialogContentsView, self.import_from_html)
-        sidebar_layout.addWidget(html_btn)
-
-        url_btn = self.create_sidebar_btn("Importa da URL", QStyle.StandardPixmap.SP_BrowserReload, self.import_from_url) # Using reload icon temporarily
-        sidebar_layout.addWidget(url_btn)
+        refresh_btn = self.create_sidebar_btn("Aggiorna", QStyle.StandardPixmap.SP_BrowserReload, self.refresh_data)
+        sidebar_layout.addWidget(refresh_btn)
 
         dup_btn = self.create_sidebar_btn("Duplica", QStyle.StandardPixmap.SP_FileDialogDetailedView, self.duplicate_order)
         sidebar_layout.addWidget(dup_btn)
@@ -200,17 +197,13 @@ class MainWindow(QMainWindow):
         del_btn = self.create_sidebar_btn("Elimina", QStyle.StandardPixmap.SP_TrashIcon, self.delete_order)
         sidebar_layout.addWidget(del_btn)
 
-        refresh_btn = self.create_sidebar_btn("Aggiorna", QStyle.StandardPixmap.SP_BrowserReload, self.refresh_data)
-        sidebar_layout.addWidget(refresh_btn)
+        html_btn = self.create_sidebar_btn("Importa HTML", QStyle.StandardPixmap.SP_FileDialogContentsView, self.import_from_html)
+        sidebar_layout.addWidget(html_btn)
+
+        url_btn = self.create_sidebar_btn("Importa da URL", QStyle.StandardPixmap.SP_BrowserReload, self.import_from_url) # Using reload icon temporarily
+        sidebar_layout.addWidget(url_btn)
 
         sidebar_layout.addStretch()
-
-        # Bottom buttons
-        settings_btn = self.create_sidebar_btn("Impostazioni", QStyle.StandardPixmap.SP_ComputerIcon, self.show_settings)
-        sidebar_layout.addWidget(settings_btn)
-
-        about_btn = self.create_sidebar_btn("Info", QStyle.StandardPixmap.SP_MessageBoxInformation, self.show_about)
-        sidebar_layout.addWidget(about_btn)
 
     def create_sidebar_btn(self, text, icon_pixmap, slot):
         """Create a sidebar button"""

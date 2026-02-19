@@ -4,6 +4,14 @@ Tutte le modifiche importanti a questo progetto saranno documentate in questo fi
 
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/),
 e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/).
+## [2.2.1] - 2026-02-19
+### 🎨 UI & UX
+- **Ottimizzazione Monitor 19"**: Ridotte le dimensioni minime della finestra e gli spazi verticali nella sidebar per una migliore visualizzazione su schermi piccoli.
+- **Riorganizzazione Sidebar**: 
+    - Pulsante "Aggiorna" spostato subito dopo "Aggiungi" per un accesso più rapido.
+    - Pulsanti "Importa HTML" e "Importa da URL" spostati alla fine della sezione AZIONI.
+    - Rimossi i pulsanti "Impostazioni" e "Info" dalla sidebar per pulizia visiva (accessibili dal menu superiore).
+
 ## [2.2.0] - 2026-02-18
 ### ✨ Aggiunte
 - **Email Sync 2.0**:

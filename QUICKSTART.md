@@ -1,4 +1,4 @@
-# 🚀 Guida Rapida - Delivery Tracker v2.0.2
+# 🚀 Guida Rapida - Delivery Tracker v2.2.1
 
 ## ⚡ Avvio Rapido
 

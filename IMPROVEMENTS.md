@@ -1,4 +1,4 @@
-# 🎉 Riepilogo Miglioramenti - Delivery Tracker v2.0.2
+# 🎉 Riepilogo Miglioramenti - Delivery Tracker v2.2.1
 
 ## 📊 Panoramica
 

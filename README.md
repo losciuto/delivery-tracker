@@ -1,4 +1,4 @@
-# Scadenziario Consegne (Delivery Tracker) v2.3.0
+# Scadenziario Consegne (Delivery Tracker) v2.4.0
 
 Un'applicazione desktop moderna e completa in Python per gestire le scadenze delle consegne da diverse piattaforme online.
 
@@ -210,6 +210,11 @@ delivery-tracker/
 ### Database corrotto
 - Ripristina da un backup in `backups/`
 - O elimina `delivery_tracker.db` per ricrearlo (perderai i dati)
+
+## 🔄 Aggiornamenti v2.4.0
+- ✅ **Merge Intelligente Duplicati**: Possibilità di unire dati da file esterni in ordini esistenti, riempiendo solo i campi vuoti.
+- ✅ **Logica Best-Match**: Sistema di associazione articoli per ordini multi-prodotto basato su tokenizzazione delle descrizioni.
+- ✅ **Documentazione Scraping**: Nuova guida sulle [Soluzioni di Scraping](docs/SCRAPING_SOLUTIONS.md) e workflow assistiti.
 
 ## 🔄 Aggiornamenti v2.3.0
 - ✅ **Importazione Universale**: Supporto per Excel, CSV e JSON con anteprima e rilevamento duplicati intelligente.

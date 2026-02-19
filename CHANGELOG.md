@@ -4,6 +4,19 @@ Tutte le modifiche importanti a questo progetto saranno documentate in questo fi
 
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/),
 e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/).
+## [2.4.0] - 2026-02-19
+### ✨ Aggiunte
+- **Merge Intelligente Duplicati**: Nuova funzionalità per unire dati da file esterni in ordini già presenti nel database.
+    - Riempie automaticamente solo i campi vuoti (prezzo, immagine, link) mantenendo le informazioni esistenti.
+- **Logica "Best-Match" Multi-Articolo**: Sistema avanzato per la gestione di ordini contenenti più prodotti.
+    - Identifica il prodotto corretto all'interno dello stesso ID ordine tramite confronto testuale delle descrizioni.
+    - Utilizza la **tokenizzazione** (intersezione di parole chiave) per gestire titoli troncati o leggermente diversi.
+- **Ricerca Duplicati Potenziata**: La ricerca ora include descrizioni simili come criterio di fallback quando Site ID o Tracking non sono disponibili.
+
+### 🔧 Fix & Miglioramenti
+- Risolto bug che sovrascriveva erroneamente gli articoli di uno stesso ordine multi-prodotto durante l'importazione.
+- Migliorato il parsing delle date per gli ordini Temu importati.
+
 ## [2.3.0] - 2026-02-19
 ### ✨ Aggiunte
 - **Piattaforma d'Importazione Universale**: Nuova gestione avanzata dell'importazione che sostituisce i vecchi metodi.

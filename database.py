@@ -308,6 +308,67 @@ def update_order(order_id: int, order_data: Dict[str, Any]) -> bool:
         return False
 
 
+def merge_order_data(order_id: int, new_data: Dict[str, Any]) -> bool:
+    """
+    Merge new data into an existing order.
+    Only fills fields that are currently empty or have default values.
+    """
+    try:
+        existing = get_order_by_id(order_id)
+        if not existing:
+            return False
+
+        merged_data = dict(existing)
+        
+        # Fields to potentially update if empty in DB
+        fields_to_merge = [
+            'seller', 'destination', 'link', 'estimated_delivery', 
+            'position', 'category', 'tracking_number', 'carrier', 
+            'last_mile_carrier', 'site_order_id', 'price', 'image_url'
+        ]
+
+        changes_made = False
+        for field in fields_to_merge:
+            new_val = new_data.get(field)
+            old_val = existing.get(field)
+            
+            # Fill if old is empty and new is not
+            if new_val and (old_val is None or str(old_val).strip() == ''):
+                merged_data[field] = new_val
+                changes_made = True
+
+        # Special case: Status
+        # If current status is 'In Attesa' and new status is different and not 'In Attesa'
+        new_status = new_data.get('status')
+        if new_status and new_status != 'In Attesa' and existing.get('status') == 'In Attesa':
+            merged_data['status'] = new_status
+            changes_made = True
+
+        # Special case: Quantity
+        new_qty = new_data.get('quantity', 1)
+        if new_qty > existing.get('quantity', 1):
+            merged_data['quantity'] = new_qty
+            changes_made = True
+
+        # Special case: Notes (append if new notes added)
+        new_notes = new_data.get('notes', '').strip()
+        if new_notes and new_notes not in existing.get('notes', ''):
+            if existing.get('notes'):
+                merged_data['notes'] = existing['notes'] + "\n" + new_notes
+            else:
+                merged_data['notes'] = new_notes
+            changes_made = True
+
+        if changes_made:
+            return update_order(order_id, merged_data)
+        
+        return True # No changes needed, but operation successful
+        
+    except Exception as e:
+        logger.error(f"Error merging order {order_id}: {e}")
+        return False
+
+
 def delete_order(order_id: int) -> bool:
     """Delete an order and its attachments"""
     try:

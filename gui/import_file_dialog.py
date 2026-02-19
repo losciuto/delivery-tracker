@@ -235,25 +235,78 @@ class ImportFileDialog(QDialog):
     def _find_duplicates(self, orders: list) -> dict:
         """
         Check each parsed order against the DB.
-        Matches on site_order_id (priority) or tracking_number.
+        Matches on site_order_id/tracking AND description (Best Match).
         Returns {row_index: existing_order_dict}.
         """
+        import re
         all_orders = database.get_orders(include_delivered=True)
         dup_map = {}
+
+        def get_tokens(text):
+            if not text: return set()
+            # Lowercase, keep alphanumeric tokens only, ignore very short words
+            words = re.findall(r'\w+', text.lower())
+            return {w for w in words if len(w) > 1}
+
+        def calculate_similarity(tokens1, tokens2):
+            if not tokens1 or not tokens2: return 0.0
+            intersection = tokens1.intersection(tokens2)
+            # Use Jaccard-like or simple intersection ratio
+            return len(intersection) / max(len(tokens1), len(tokens2))
+
         for row, order in enumerate(orders):
             new_site_id  = (order.get('site_order_id') or '').strip()
             new_tracking = (order.get('tracking_number') or '').strip()
+            new_desc     = (order.get('description') or '').strip()
+            new_tokens   = get_tokens(new_desc)
+            
+            # Phase 1: Filter possible candidates by ID or Tracking
+            candidates = []
             for existing in all_orders:
                 ex_site_id  = (existing.get('site_order_id') or '').strip()
                 ex_tracking = (existing.get('tracking_number') or '').strip()
-                matched = False
-                if new_site_id and ex_site_id and new_site_id == ex_site_id:
-                    matched = True
-                elif new_tracking and ex_tracking and new_tracking == ex_tracking:
-                    matched = True
-                if matched:
-                    dup_map[row] = existing
-                    break
+                
+                match_id = new_site_id and ex_site_id and new_site_id == ex_site_id
+                match_track = new_tracking and ex_tracking and new_tracking == ex_tracking
+                
+                if match_id or match_track:
+                    candidates.append(existing)
+
+            # Phase 2: If candidates exist, find the best match by description
+            best_existing = None
+            if candidates:
+                max_sim = -1.0
+                for cand in candidates:
+                    cand_tokens = get_tokens(cand.get('description', ''))
+                    sim = calculate_similarity(new_tokens, cand_tokens)
+                    if sim > max_sim:
+                        max_sim = sim
+                        best_existing = cand
+                
+                # Minimum threshold for multi-item orders: 0.2 (at least some shared keywords)
+                if max_sim < 0.2:
+                    # If very low similarity, maybe it's a different item in same order but we don't have it yet
+                    # However, if it matched ID/Tracking, it's safer to consider it a duplicate for merge
+                    # unless we are sure it's NEW.
+                    pass
+
+            # Phase 3: Fallback - Search ALL orders by description if no ID match
+            if not best_existing and new_tokens:
+                max_sim = 0.0
+                for ex in all_orders:
+                    ex_tokens = get_tokens(ex.get('description', ''))
+                    sim = calculate_similarity(new_tokens, ex_tokens)
+                    if sim > max_sim:
+                        max_sim = sim
+                        best_existing = ex
+                
+                # Threshold for description-only match: 0.6 (fairly strict)
+                if max_sim < 0.6:
+                    best_existing = None
+
+            if best_existing:
+                dup_map[row] = best_existing
+
         return dup_map
 
     def _populate_table(self, orders: list):
@@ -356,55 +409,95 @@ class ImportFileDialog(QDialog):
             QMessageBox.warning(self, "Selezione", "Seleziona almeno un articolo da importare.")
             return
 
-        # Warn about duplicates
+        # Identify selected duplicates
         selected_dups = [row for row in selected_rows if row in self._duplicate_map]
+        
+        # Choice for duplicates
+        dup_action = "new" # default: import as new
         if selected_dups:
-            dup_lines = []
-            for row in selected_dups:
-                existing = self._duplicate_map[row]
-                new_order = self._parsed_orders[row]
-                dup_lines.append(
-                    f"• {new_order.get('description', 'Articolo')}\n"
-                    f"  → già in DB come ID {existing['id']} "
-                    f"(stato: {existing.get('status', 'N/D')})"
-                )
-            confirm = QMessageBox.question(
-                self,
-                "⚠️ Articoli già presenti",
-                f"I seguenti {len(selected_dups)} articolo/i risultano già presenti nel database:\n\n"
-                + "\n".join(dup_lines)
-                + "\n\nVuoi importarli comunque come nuovi ordini?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if confirm != QMessageBox.StandardButton.Yes:
-                return
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("⚠️ Articoli già presenti")
+            msg_box.setIcon(QMessageBox.Icon.Warning)
+            msg_box.setText(f"Sono stati selezionati {len(selected_dups)} articoli che risultano già presenti nel database.")
+            msg_box.setInformativeText("Cosa vuoi fare con questi articoli?")
+            
+            # Custom buttons
+            btn_merge = msg_box.addButton("Aggiorna Esistenti", QMessageBox.ButtonRole.AcceptRole)
+            btn_merge.setToolTip("Riempie i campi vuoti dei record già presenti nel DB")
+            
+            btn_new = msg_box.addButton("Importa come Nuovi", QMessageBox.ButtonRole.AcceptRole)
+            btn_new.setToolTip("Crea nuovi record separati (comportamento standard)")
+            
+            btn_skip = msg_box.addButton("Salta Duplicati", QMessageBox.ButtonRole.RejectRole)
+            btn_skip.setToolTip("Importa solo gli articoli nuovi, saltando questi")
+            
+            msg_box.addButton(QMessageBox.StandardButton.Cancel)
+
+            msg_box.exec()
+            clicked_btn = msg_box.clickedButton()
+
+            if clicked_btn == btn_merge:
+                dup_action = "merge"
+            elif clicked_btn == btn_new:
+                dup_action = "new"
+            elif clicked_btn == btn_skip:
+                dup_action = "skip"
+            else:
+                return # Cancel
 
         imported = 0
+        updated = 0
         skipped = 0
+        
         for row in selected_rows:
-            if row < len(self._parsed_orders):
-                order = self._parsed_orders[row]
-                # Ensure mandatory fields have defaults
-                if not order.get('order_date'):
-                    from datetime import date
-                    order['order_date'] = date.today().strftime('%Y-%m-%d')
-                if not order.get('platform'):
-                    order['platform'] = 'Sconosciuto'
-                if not order.get('description'):
-                    order['description'] = f"Articolo importato (riga {row + 1})"
+            if row >= len(self._parsed_orders):
+                continue
 
-                order_id = database.add_order(order)
-                if order_id:
-                    imported += 1
-                    logger.info(f"FILE-IMPORT: Ordine importato ID {order_id}: {order.get('description', '')}")
-                else:
+            order = self._parsed_orders[row].copy() # Work on a copy
+            
+            # Ensure mandatory fields have defaults
+            if not order.get('order_date'):
+                from datetime import date
+                order['order_date'] = date.today().strftime('%Y-%m-%d')
+            if not order.get('platform'):
+                order['platform'] = 'Sconosciuto'
+            if not order.get('description'):
+                order['description'] = f"Articolo importato (riga {row + 1})"
+
+            is_dup = row in self._duplicate_map
+            
+            if is_dup:
+                if dup_action == "skip":
                     skipped += 1
+                    continue
+                elif dup_action == "merge":
+                    existing_id = self._duplicate_map[row]['id']
+                    if database.merge_order_data(existing_id, order):
+                        updated += 1
+                    else:
+                        skipped += 1
+                    continue
+                # else: "new" -> falls through to add_order
 
-        msg = f"✅ Importati {imported} ordine/i con successo!"
+            order_id = database.add_order(order)
+            if order_id:
+                imported += 1
+                logger.info(f"FILE-IMPORT: Ordine importato ID {order_id}: {order.get('description', '')}")
+            else:
+                skipped += 1
+
+        # Summary message
+        msg_parts = []
+        if imported:
+            msg_parts.append(f"✅ Importati {imported} nuovi ordini.")
+        if updated:
+            msg_parts.append(f"🔄 Aggiornati {updated} ordini esistenti.")
         if skipped:
-            msg += f"\n⚠️ {skipped} ordine/i non importato/i (errore DB)."
+            msg_parts.append(f"⚠️ {skipped} articoli saltati o con errore.")
+            
+        if not msg_parts:
+            msg_parts.append("Nessuna operazione effettuata.")
 
-        QMessageBox.information(self, "Importazione completata", msg)
-        logger.info(f"FILE-IMPORT: Completato. Importati: {imported}, Saltati: {skipped}")
+        QMessageBox.information(self, "Importazione completata", "\n".join(msg_parts))
+        logger.info(f"FILE-IMPORT: Completato. New: {imported}, Merged: {updated}, Skipped: {skipped}")
         self.accept()

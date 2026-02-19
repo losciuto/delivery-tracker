@@ -2,6 +2,9 @@
 
 ## Lingua di Comunicazione
 - **IMPORTANTE**: Comunica SEMPRE in **italiano** con l'utente.
+  > [!NOTE]
+  > **IT**: La lingua da utilizzare va modificata in funzione della propria.  
+  > **EN**: The language to be used should be modified according to your own.
 - Mantieni un tono professionale e collaborativo.
 
 ## Gestione Multilingua del Progetto

@@ -4,6 +4,26 @@ Tutte le modifiche importanti a questo progetto saranno documentate in questo fi
 
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/),
 e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/).
+## [2.3.0] - 2026-02-19
+### ✨ Aggiunte
+- **Piattaforma d'Importazione Universale**: Nuova gestione avanzata dell'importazione che sostituisce i vecchi metodi.
+    - Supporto per **Excel (.xlsx, .xls)**, **CSV** e **JSON**.
+    - **Analisi Automatica**: Il file viene processato istantaneamente al momento della selezione.
+    - **Dialogo di Anteprima**: Visualizzazione completa dei dati estratti prima dell'inserimento nel database.
+    - **Detezione Duplicati**: Identificazione automatica degli ordini già presenti (tramite Site ID o Tracking) con evidenziazione visiva e pre-deselezione.
+- **Dati Prodotto Avanzati**:
+    - Nuovi campi database per **Prezzo** e **Immagine Prodotto**.
+    - Visualizzazione miniature e prezzi (formattati in €) nella tabella principale.
+    - Link alle immagini cliccabili per apertura rapida nel browser.
+- **Scraping IA Temu**:
+    - Procedura guidata tramite IA per l'estrazione perfetta degli ordini da Temu (escluso materiale pubblicitario).
+    - Generazione automatica di file Excel pronti per l'importazione.
+    - Nuovo workflow di automazione: `/import-temu`.
+
+### 🎨 UI & UX
+- **Semplificazione Sidebar & Menu**: Rimozione delle opzioni obsolete "Importa HTML" e "Importa da URL" per un'esperienza utente più pulita e focalizzata sui file.
+- **Stabilità**: Migrazioni automatiche del database per supportare i nuovi campi senza perdita di dati.
+
 ## [2.2.1] - 2026-02-19
 ### 🎨 UI & UX
 - **Ottimizzazione Monitor 19"**: Ridotte le dimensioni minime della finestra e gli spazi verticali nella sidebar per una migliore visualizzazione su schermi piccoli.

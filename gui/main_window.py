@@ -18,8 +18,7 @@ import config
 import utils
 from widgets import DashboardWidget, SearchFilterBar
 from gui.dialogs import OrderDialog, SettingsDialog
-from gui.import_html_dialog import ImportHtmlDialog
-from gui.browser_import_dialog import BrowserImportDialog
+from gui.import_file_dialog import ImportFileDialog
 
 logger = utils.get_logger(__name__)
 
@@ -197,11 +196,8 @@ class MainWindow(QMainWindow):
         del_btn = self.create_sidebar_btn("Elimina", QStyle.StandardPixmap.SP_TrashIcon, self.delete_order)
         sidebar_layout.addWidget(del_btn)
 
-        html_btn = self.create_sidebar_btn("Importa HTML", QStyle.StandardPixmap.SP_FileDialogContentsView, self.import_from_html)
-        sidebar_layout.addWidget(html_btn)
-
-        url_btn = self.create_sidebar_btn("Importa da URL", QStyle.StandardPixmap.SP_BrowserReload, self.import_from_url) # Using reload icon temporarily
-        sidebar_layout.addWidget(url_btn)
+        file_btn = self.create_sidebar_btn("Importa File", QStyle.StandardPixmap.SP_FileDialogStart, self.import_from_file)
+        sidebar_layout.addWidget(file_btn)
 
         sidebar_layout.addStretch()
 
@@ -254,12 +250,12 @@ class MainWindow(QMainWindow):
 
         # Table
         self.table = QTableWidget()
-        self.table.setColumnCount(18)
+        self.table.setColumnCount(20)
         self.table.setHorizontalHeaderLabels([
             "ID", "Data", "Piattaforma", "Venditore", "Destinazione", "Descrizione",
             "ID Ordine Sito", "Stato", "Link", "Q.tà", "Cons. Prevista", "Posizione",
             "N. Tracking", "Vettore", "Ultimo Miglio",
-            "Categoria", "Consegnato", "Note"
+            "Categoria", "Consegnato", "Note", "Prezzo", "Immagine"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -273,6 +269,8 @@ class MainWindow(QMainWindow):
         self.table.setColumnWidth(1, 100)  # Data
         self.table.setColumnWidth(9, 60)   # Q.tà
         self.table.setColumnWidth(16, 100) # Consegnato
+        self.table.setColumnWidth(18, 80)  # Prezzo
+        self.table.setColumnWidth(19, 200) # Immagine
 
         # Behavior for other columns
         header = self.table.horizontalHeader()
@@ -316,8 +314,12 @@ class MainWindow(QMainWindow):
         export_menu.addAction(export_json_action)
 
         import_menu = file_menu.addMenu("Importa")
+ 
+        import_file_action = QAction("📂 Importa File (Excel/CSV/JSON)", self)
+        import_file_action.triggered.connect(self.import_from_file)
+        import_menu.addAction(import_file_action)
 
-        import_json_action = QAction("Importa JSON", self)
+        import_json_action = QAction("Importa JSON (senza anteprima)", self)
         import_json_action.triggered.connect(self.import_data)
         import_menu.addAction(import_json_action)
 
@@ -344,14 +346,6 @@ class MainWindow(QMainWindow):
         self.sync_email_action = QAction("📧 Sincronizza Email", self)
         self.sync_email_action.triggered.connect(self.sync_emails)
         self.tools_menu.addAction(self.sync_email_action)
-
-        import_html_action = QAction("📋 Importa da HTML", self)
-        import_html_action.triggered.connect(self.import_from_html)
-        self.tools_menu.addAction(import_html_action)
-
-        import_url_action = QAction("🌐 Importa da URL", self)
-        import_url_action.triggered.connect(self.import_from_url)
-        self.tools_menu.addAction(import_url_action)
 
         self.tools_menu.addSeparator()
 
@@ -392,6 +386,10 @@ class MainWindow(QMainWindow):
     def on_cell_clicked(self, row, column):
         """Handle cell click (for links)"""
         if column == 8:  # Link column
+            item = self.table.item(row, column)
+            if item and item.text():
+                webbrowser.open(item.text())
+        elif column == 19:  # Immagine URL column
             item = self.table.item(row, column)
             if item and item.text():
                 webbrowser.open(item.text())
@@ -488,10 +486,26 @@ class MainWindow(QMainWindow):
             self.table.setItem(row, 16, QTableWidgetItem("Sì" if order.get('is_delivered') else "No"))
             self.table.setItem(row, 17, QTableWidgetItem(order.get('notes', '')))
 
+            # Prezzo (col 18)
+            price = order.get('price')
+            price_text = f"\u20ac {price:.2f}" if price is not None else ''
+            self.table.setItem(row, 18, QTableWidgetItem(price_text))
+
+            # Immagine URL (col 19) — cliccabile come link
+            image_url = order.get('image_url', '')
+            image_item = QTableWidgetItem(image_url)
+            if image_url:
+                image_item.setForeground(QBrush(QColor("blue") if theme_name == 'light' else QColor("#64B5F6")))
+                font = image_item.font()
+                font.setUnderline(True)
+                image_item.setFont(font)
+                image_item.setToolTip(f"🖼 Clicca per aprire l'immagine:\n{image_url}")
+            self.table.setItem(row, 19, image_item)
+
             # Add tooltips
-            for col in range(18):
+            for col in range(20):
                 item = self.table.item(row, col)
-                if item:
+                if item and not item.toolTip():
                     item.setToolTip(item.text())
 
             # Color rows based on status
@@ -515,18 +529,17 @@ class MainWindow(QMainWindow):
                 color = None
             
             if color:
-                for col in range(18):
+                for col in range(20):
                     item = self.table.item(row, col)
                     if item:
                         item.setBackground(color)
                         # Ensure text is readable on colored background
                         item.setForeground(QBrush(QColor("black") if theme_name == 'light' else QColor("white")))
-            
+
             # Save original background color as data for easy restoration
-            for col in range(18):
+            for col in range(20):
                 item = self.table.item(row, col)
                 if item:
-                    # Save status-based color if any, else None
                     item.setData(Qt.ItemDataRole.UserRole, color)
         
         self.table.setSortingEnabled(True)
@@ -673,15 +686,9 @@ class MainWindow(QMainWindow):
             else:
                 QMessageBox.warning(self, "Errore", "Errore durante l'aggiunta dell'ordine")
 
-    def import_from_html(self):
-        """Open the HTML import dialog"""
-        dialog = ImportHtmlDialog(self)
-        if dialog.exec():
-            self.refresh_data()
-
-    def import_from_url(self):
-        """Open the Browser URL import dialog"""
-        dialog = BrowserImportDialog(self)
+    def import_from_file(self):
+        """Open the file import dialog (Excel/CSV/JSON) with preview."""
+        dialog = ImportFileDialog(self)
         if dialog.exec():
             self.refresh_data()
 

@@ -72,14 +72,23 @@ class OrderDialog(QDialog):
         self.qty_input.setText("1")
         self.qty_input.setMaximumWidth(100)
         product_layout.addRow("Quantità:", self.qty_input)
-        
+
+        self.price_input = QLineEdit()
+        self.price_input.setPlaceholderText("Es: 12.50")
+        self.price_input.setMaximumWidth(120)
+        product_layout.addRow("Prezzo (€):", self.price_input)
+
+        self.image_url_input = QLineEdit()
+        self.image_url_input.setPlaceholderText("https://... (link immagine prodotto)")
+        product_layout.addRow("Immagine (URL):", self.image_url_input)
+
         # Category
         self.category_input = QComboBox()
         self.category_input.setEditable(True)
         self.category_input.setPlaceholderText("Seleziona o digita...")
         self.category_input.addItems(config.DEFAULT_CATEGORIES)
         product_layout.addRow("Categoria:", self.category_input)
-        
+
         product_group.setLayout(product_layout)
         product_main_layout.addWidget(product_group)
         self.tabs.addTab(product_tab, "📦 Prodotto")
@@ -177,10 +186,11 @@ class OrderDialog(QDialog):
     def setup_auto_align(self):
         """Connect editingFinished to return cursor to position 0 for all text inputs"""
         text_widgets = [
-            self.seller_input, self.desc_input, self.site_order_id_input, 
-            self.link_input, self.qty_input, self.destination_input, 
-            self.position_input, self.tracking_input, self.carrier_input, 
-            self.last_mile_input, self.platform_input, self.category_input
+            self.seller_input, self.desc_input, self.site_order_id_input,
+            self.link_input, self.qty_input, self.price_input, self.image_url_input,
+            self.destination_input, self.position_input, self.tracking_input,
+            self.carrier_input, self.last_mile_input, self.platform_input,
+            self.category_input
         ]
         
         for widget in text_widgets:
@@ -220,6 +230,11 @@ class OrderDialog(QDialog):
         self.last_mile_input.setText(self.order_data.get('last_mile_carrier', ''))
         self.notes_input.setText(self.order_data.get('notes', ''))
 
+        # New fields
+        price = self.order_data.get('price')
+        self.price_input.setText(f"{price:.2f}" if price is not None else '')
+        self.image_url_input.setText(self.order_data.get('image_url', ''))
+
     def validate_and_accept(self):
         """Validate form data before accepting"""
         # Required fields
@@ -246,11 +261,34 @@ class OrderDialog(QDialog):
             QMessageBox.warning(self, "Validazione", "Il link deve iniziare con http:// o https://")
             self.link_input.setFocus()
             return
+
+        # Validate price if provided
+        price_text = self.price_input.text().strip()
+        if price_text:
+            try:
+                float(price_text.replace(',', '.'))
+            except ValueError:
+                QMessageBox.warning(self, "Validazione", "Il prezzo deve essere un numero (es: 12.50)")
+                self.price_input.setFocus()
+                return
+
+        # Validate image URL if provided
+        image_url = self.image_url_input.text().strip()
+        if image_url and not utils.Validator.validate_url(image_url):
+            QMessageBox.warning(self, "Validazione", "L'URL immagine deve iniziare con http:// o https://")
+            self.image_url_input.setFocus()
+            return
         
         self.accept()
 
     def get_data(self):
         """Get form data as dictionary"""
+        price_text = self.price_input.text().strip().replace(',', '.')
+        try:
+            price = float(price_text) if price_text else None
+        except ValueError:
+            price = None
+
         return {
             'platform': self.platform_input.currentText().strip(),
             'seller': self.seller_input.text().strip(),
@@ -260,6 +298,8 @@ class OrderDialog(QDialog):
             'link': self.link_input.text().strip(),
             'status': self.status_input.currentText(),
             'quantity': int(self.qty_input.text() or 1),
+            'price': price,
+            'image_url': self.image_url_input.text().strip(),
             'category': self.category_input.currentText().strip(),
             'order_date': self.order_date_input.date().toString('yyyy-MM-dd'),
             'estimated_delivery': self.est_delivery_input.date().toString('yyyy-MM-dd'),

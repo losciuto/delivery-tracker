@@ -1,53 +1,63 @@
 """
-Import HTML Dialog for Delivery Tracker.
-Allows the user to paste raw HTML from an order page and import the extracted orders.
+Import File Dialog for Delivery Tracker.
+Supports importing orders from Excel (.xlsx/.xls), CSV and JSON files.
+Shows a preview table with duplicate detection and per-row checkbox selection.
 """
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QTextEdit, QTableWidget, QTableWidgetItem, QHeaderView,
+    QTableWidget, QTableWidgetItem, QHeaderView, QFileDialog,
     QMessageBox, QAbstractItemView, QCheckBox, QWidget, QSplitter,
-    QGroupBox, QProgressBar
+    QGroupBox, QProgressBar, QLineEdit, QFrame
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QObject
 from PyQt6.QtGui import QColor, QBrush, QFont
 
 import database
 import utils
+from export_manager import ExportManager
 
 logger = utils.get_logger(__name__)
 
+# Supported file filter string
+FILE_FILTER = "File supportati (*.xlsx *.xls *.csv *.json);;Excel (*.xlsx *.xls);;CSV (*.csv);;JSON (*.json);;Tutti i file (*)"
 
-class ParseWorker(QObject):
-    """Worker for async HTML parsing (avoids UI freeze on large HTML)"""
-    finished = pyqtSignal(dict)  # Now emits a dict with metadata
+
+class ImportWorker(QObject):
+    """Worker for async file parsing to avoid UI freeze on large files."""
+    finished = pyqtSignal(list)   # emits list of order dicts
     error = pyqtSignal(str)
 
-    def __init__(self, html: str):
+    def __init__(self, filepath: str):
         super().__init__()
-        self.html = html
+        self.filepath = filepath
 
     def run(self):
         try:
-            from html_order_parser import HtmlOrderParser
-            parser = HtmlOrderParser()
-            results = parser.parse_with_meta(self.html)
-            self.finished.emit(results)
+            ok, orders, err = ExportManager.import_auto(self.filepath)
+            if not ok:
+                self.error.emit(err or "Errore durante la lettura del file")
+            else:
+                self.finished.emit(orders)
         except Exception as e:
-            logger.exception("Errore durante il parsing HTML")
+            logger.exception("Errore durante l'import del file")
             self.error.emit(str(e))
 
 
-class ImportHtmlDialog(QDialog):
-    """Dialog to paste HTML source and import extracted orders."""
+class ImportFileDialog(QDialog):
+    """
+    Dialog to select and preview orders from Excel/CSV/JSON before importing.
+    Mirrors the UX of ImportHtmlDialog.
+    """
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("📋 Importa Ordini da HTML")
-        self.resize(900, 680)
+        self.setWindowTitle("📂 Importa Ordini da File")
+        self.resize(920, 680)
         self._parsed_orders = []
         self._duplicate_map = {}   # row_index -> existing DB order dict
         self._thread = None
         self._worker = None
+        self._filepath = ""
         self.setup_ui()
 
     # ──────────────────────────────────────────────────────────────────────
@@ -59,12 +69,12 @@ class ImportHtmlDialog(QDialog):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
 
-        # ── Instructions ──────────────────────────────────────────────────
+        # ── Info bar ──────────────────────────────────────────────────────
         info_label = QLabel(
-            "ℹ️  <b>Come si usa:</b> Apri la pagina del tuo ordine nel tuo browser abituale (Chrome/Firefox/ecc.), premi "
-            "<b>Ctrl+U</b> (o tasto destro → <i>Visualizza sorgente pagina</i>), "
-            "seleziona tutto (<b>Ctrl+A</b>), copia (<b>Ctrl+C</b>) e incolla qui sotto.<br><br>"
-            "💡 <i>Nota:</b> Per AliExpress e Temu questa procedura manuale è più affidabile dell'importazione da URL."
+            "ℹ️  <b>Come si usa:</b> Seleziona un file <b>Excel (.xlsx/.xls)</b>, "
+            "<b>CSV</b> o <b>JSON</b> contenente i tuoi ordini. "
+            "Le colonne vengono rilevate automaticamente indipendentemente dall'ordine.<br>"
+            "💡 <i>Colonne duplicate già presenti nel DB vengono evidenziate in arancione e pre-deselezionate.</i>"
         )
         info_label.setWordWrap(True)
         info_label.setStyleSheet(
@@ -72,39 +82,44 @@ class ImportHtmlDialog(QDialog):
         )
         layout.addWidget(info_label)
 
-        # ── Splitter: paste area + preview table ──────────────────────────
-        splitter = QSplitter(Qt.Orientation.Vertical)
+        # ── File selector ─────────────────────────────────────────────────
+        file_group = QGroupBox("📁 File da importare")
+        file_layout = QHBoxLayout(file_group)
+        file_layout.setContentsMargins(8, 8, 8, 8)
 
-        # Paste area
-        paste_group = QGroupBox("📄 Sorgente HTML")
-        paste_layout = QVBoxLayout(paste_group)
-        self.html_input = QTextEdit()
-        self.html_input.setPlaceholderText(
-            "Incolla qui il sorgente HTML della pagina ordine…\n\n"
-            "Supportati: Amazon, Temu, eBay, AliExpress, Zalando e altri."
-        )
-        self.html_input.setFont(QFont("Courier New", 9))
-        paste_layout.addWidget(self.html_input)
-        splitter.addWidget(paste_group)
+        self.file_path_edit = QLineEdit()
+        self.file_path_edit.setPlaceholderText("Nessun file selezionato...")
+        self.file_path_edit.setReadOnly(True)
+        self.file_path_edit.setStyleSheet("background: transparent;")
+        file_layout.addWidget(self.file_path_edit)
 
-        # Preview table
-        preview_group = QGroupBox("🔍 Anteprima articoli estratti")
+        browse_btn = QPushButton("📂 Sfoglia…")
+        browse_btn.setFixedWidth(110)
+        browse_btn.setFixedHeight(34)
+        browse_btn.clicked.connect(self._browse_file)
+        file_layout.addWidget(browse_btn)
+
+        layout.addWidget(file_group)
+
+        # ── Preview table ─────────────────────────────────────────────────
+        preview_group = QGroupBox("🔍 Anteprima articoli")
         preview_layout = QVBoxLayout(preview_group)
 
-        self.table = QTableWidget(0, 8)
+        self.table = QTableWidget(0, 9)
         self.table.setHorizontalHeaderLabels([
             "✓", "Piattaforma", "ID Ordine", "Descrizione",
-            "Q.tà", "Tracking", "Stato", "Cons. Prevista"
+            "Q.tà", "Prezzo", "Stato", "Cons. Prevista", "Immagine"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self.table.setColumnWidth(0, 30)
-        self.table.setColumnWidth(1, 100)
+        self.table.setColumnWidth(1, 110)
         self.table.setColumnWidth(2, 160)
-        self.table.setColumnWidth(4, 50)
-        self.table.setColumnWidth(5, 160)
+        self.table.setColumnWidth(4, 55)
+        self.table.setColumnWidth(5, 80)
         self.table.setColumnWidth(6, 120)
         self.table.setColumnWidth(7, 120)
+        self.table.setColumnWidth(8, 160)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
@@ -125,23 +140,16 @@ class ImportHtmlDialog(QDialog):
         sel_layout.addWidget(self.result_label)
         preview_layout.addLayout(sel_layout)
 
-        splitter.addWidget(preview_group)
-        splitter.setSizes([250, 350])
-        layout.addWidget(splitter)
+        layout.addWidget(preview_group)
 
         # ── Progress bar (hidden by default) ─────────────────────────────
         self.progress = QProgressBar()
-        self.progress.setRange(0, 0)  # indeterminate
+        self.progress.setRange(0, 0)
         self.progress.hide()
         layout.addWidget(self.progress)
 
         # ── Buttons ───────────────────────────────────────────────────────
         btn_layout = QHBoxLayout()
-
-        self.analyze_btn = QPushButton("🔍 Analizza HTML")
-        self.analyze_btn.setFixedHeight(40)
-        self.analyze_btn.setDefault(True)
-        self.analyze_btn.clicked.connect(self._analyze)
 
         self.import_btn = QPushButton("✅ Importa Selezionati")
         self.import_btn.setFixedHeight(40)
@@ -153,7 +161,6 @@ class ImportHtmlDialog(QDialog):
         cancel_btn.clicked.connect(self.reject)
 
         btn_layout.addStretch()
-        btn_layout.addWidget(self.analyze_btn)
         btn_layout.addWidget(self.import_btn)
         btn_layout.addWidget(cancel_btn)
         layout.addLayout(btn_layout)
@@ -162,21 +169,32 @@ class ImportHtmlDialog(QDialog):
     # Slots
     # ──────────────────────────────────────────────────────────────────────
 
+    def _browse_file(self):
+        """Open file browser dialog."""
+        filepath, _ = QFileDialog.getOpenFileName(
+            self, "Seleziona file ordini", "", FILE_FILTER
+        )
+        if filepath:
+            self._filepath = filepath
+            self.file_path_edit.setText(filepath)
+            self.import_btn.setEnabled(False)
+            self.table.setRowCount(0)
+            self.result_label.setText("")
+            self._parsed_orders = []
+            self._analyze()  # Auto-analyze once file is selected
+
     def _analyze(self):
-        html = self.html_input.toPlainText().strip()
-        if not html:
-            QMessageBox.warning(self, "Attenzione", "Incolla prima il sorgente HTML della pagina ordine.")
+        """Start async file parsing."""
+        if not self._filepath:
             return
 
-        self.analyze_btn.setEnabled(False)
         self.import_btn.setEnabled(False)
         self.progress.show()
         self.table.setRowCount(0)
         self.result_label.setText("Analisi in corso…")
 
-        # Run parser in a background thread
         self._thread = QThread()
-        self._worker = ParseWorker(html)
+        self._worker = ImportWorker(self._filepath)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.finished.connect(self._on_parse_done)
@@ -185,55 +203,40 @@ class ImportHtmlDialog(QDialog):
         self._worker.error.connect(self._thread.quit)
         self._thread.start()
 
-    def _on_parse_done(self, result: dict):
+    def _on_parse_done(self, orders: list):
         self.progress.hide()
-        self.analyze_btn.setEnabled(True)
-        
-        orders = result.get('orders', [])
-        platform = result.get('platform', 'Sconosciuto')
-        warning = result.get('warning')
-        
         self._parsed_orders = orders
 
-        if warning:
-            self.result_label.setText(f"⚠️ {platform}: Pagina non valida")
-            QMessageBox.warning(self, "Attenzione", warning)
-            return
-
         if not orders:
-            self.result_label.setText(f"⚠️ {platform}: Nessun ordine trovato")
+            self.result_label.setText("⚠️ Nessun ordine trovato nel file")
             QMessageBox.information(
                 self, "Nessun risultato",
-                f"Non è stato possibile estrarre ordini da {platform}.\n\n"
-                "Assicurati di aver incollato il sorgente (Ctrl+U) della pagina DETTAGLIO ordine."
+                "Non è stato possibile estrarre ordini dal file.\n\n"
+                "Verifica che il file contenga intestazioni riconoscibili e dati validi."
             )
             return
 
-        self.result_label.setText(f"✅ {platform}: {len(orders)} articoli trovati")
         self._populate_table(orders)
         self.import_btn.setEnabled(True)
 
         dup_count = len(self._duplicate_map)
+        base_msg = f"✅ {len(orders)} articolo/i trovato/i"
         if dup_count:
-            self.result_label.setText(
-                f"✅ {len(orders)} articolo/i trovato/i  ·  "
-                f"⚠️ {dup_count} già presente/i in DB"
-            )
+            self.result_label.setText(f"{base_msg}  ·  ⚠️ {dup_count} già presente/i in DB")
         else:
-            self.result_label.setText(f"✅ {len(orders)} articolo/i trovato/i")
+            self.result_label.setText(base_msg)
 
     def _on_parse_error(self, error_msg: str):
         self.progress.hide()
-        self.analyze_btn.setEnabled(True)
         self.result_label.setText("❌ Errore durante l'analisi")
-        QMessageBox.critical(self, "Errore", f"Errore durante l'analisi HTML:\n{error_msg}")
-        logger.error(f"HTML-IMPORT: Errore parser: {error_msg}")
+        QMessageBox.critical(self, "Errore", f"Errore durante la lettura del file:\n{error_msg}")
+        logger.error(f"FILE-IMPORT: Errore: {error_msg}")
 
     def _find_duplicates(self, orders: list) -> dict:
         """
         Check each parsed order against the DB.
-        Returns a dict {row_index: existing_order_dict} for duplicates found.
         Matches on site_order_id (priority) or tracking_number.
+        Returns {row_index: existing_order_dict}.
         """
         all_orders = database.get_orders(include_delivered=True)
         dup_map = {}
@@ -268,38 +271,42 @@ class ImportHtmlDialog(QDialog):
 
         for row, order in enumerate(orders):
             self.table.insertRow(row)
-
             is_dup = row in self._duplicate_map
 
-            # Checkbox column — duplicates start unchecked
+            # Checkbox
             chk_widget = QWidget()
             chk_layout = QHBoxLayout(chk_widget)
             chk_layout.setContentsMargins(4, 0, 4, 0)
             chk_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
             chk = QCheckBox()
-            chk.setChecked(not is_dup)   # pre-deselect duplicates
+            chk.setChecked(not is_dup)
             chk_layout.addWidget(chk)
             self.table.setCellWidget(row, 0, chk_widget)
 
-            self.table.setItem(row, 1, QTableWidgetItem(order.get('platform', '')))
-            self.table.setItem(row, 2, QTableWidgetItem(order.get('site_order_id', '')))
-            self.table.setItem(row, 3, QTableWidgetItem(order.get('description', '')))
+            self.table.setItem(row, 1, QTableWidgetItem(str(order.get('platform', ''))))
+            self.table.setItem(row, 2, QTableWidgetItem(str(order.get('site_order_id', ''))))
+            self.table.setItem(row, 3, QTableWidgetItem(str(order.get('description', ''))))
             self.table.setItem(row, 4, QTableWidgetItem(str(order.get('quantity', 1))))
-            self.table.setItem(row, 5, QTableWidgetItem(order.get('tracking_number', '')))
 
-            status = order.get('status', 'In Attesa')
+            # Price
+            price = order.get('price')
+            price_text = f"€ {price:.2f}" if price is not None else ''
+            self.table.setItem(row, 5, QTableWidgetItem(price_text))
+
+            # Status with color
+            status = str(order.get('status', 'In Attesa'))
             status_item = QTableWidgetItem(status)
             bg = status_colors.get(status, '#F5F5F5')
             status_item.setBackground(QBrush(QColor(bg)))
             self.table.setItem(row, 6, status_item)
 
-            self.table.setItem(row, 7, QTableWidgetItem(order.get('estimated_delivery', '')))
+            self.table.setItem(row, 7, QTableWidgetItem(str(order.get('estimated_delivery', ''))))
+            self.table.setItem(row, 8, QTableWidgetItem(str(order.get('image_url', ''))))
 
-            # Highlight duplicate rows in amber and add tooltip
+            # Highlight duplicates
             if is_dup:
                 existing = self._duplicate_map[row]
-                dup_color = QColor('#FFF3E0')   # light amber
-                dup_border = QColor('#FF9800')
+                dup_color = QColor('#FFF3E0')
                 tooltip = (
                     f"⚠️ Già presente in DB (ID {existing['id']}):\n"
                     f"  Descrizione: {existing.get('description', '')}\n"
@@ -307,13 +314,12 @@ class ImportHtmlDialog(QDialog):
                     f"  ID Ordine: {existing.get('site_order_id', '')}\n"
                     f"  Tracking: {existing.get('tracking_number', '')}"
                 )
-                for col in range(1, 8):
+                for col in range(1, 9):
                     item = self.table.item(row, col)
                     if item:
                         item.setBackground(QBrush(dup_color))
                         item.setToolTip(tooltip)
             else:
-                # Tooltip on description only
                 desc_item = self.table.item(row, 3)
                 if desc_item:
                     desc_item.setToolTip(order.get('description', ''))
@@ -341,17 +347,16 @@ class ImportHtmlDialog(QDialog):
         return None
 
     def _import_selected(self):
-        selected_rows = []
-        for row in range(self.table.rowCount()):
-            chk = self._get_checkbox(row)
-            if chk and chk.isChecked():
-                selected_rows.append(row)
+        selected_rows = [
+            row for row in range(self.table.rowCount())
+            if (chk := self._get_checkbox(row)) and chk.isChecked()
+        ]
 
         if not selected_rows:
             QMessageBox.warning(self, "Selezione", "Seleziona almeno un articolo da importare.")
             return
 
-        # Check if any selected rows are duplicates → ask confirmation
+        # Warn about duplicates
         selected_dups = [row for row in selected_rows if row in self._duplicate_map]
         if selected_dups:
             dup_lines = []
@@ -380,10 +385,19 @@ class ImportHtmlDialog(QDialog):
         for row in selected_rows:
             if row < len(self._parsed_orders):
                 order = self._parsed_orders[row]
+                # Ensure mandatory fields have defaults
+                if not order.get('order_date'):
+                    from datetime import date
+                    order['order_date'] = date.today().strftime('%Y-%m-%d')
+                if not order.get('platform'):
+                    order['platform'] = 'Sconosciuto'
+                if not order.get('description'):
+                    order['description'] = f"Articolo importato (riga {row + 1})"
+
                 order_id = database.add_order(order)
                 if order_id:
                     imported += 1
-                    logger.info(f"HTML-IMPORT: Ordine importato con ID {order_id}: {order.get('description', '')}")
+                    logger.info(f"FILE-IMPORT: Ordine importato ID {order_id}: {order.get('description', '')}")
                 else:
                     skipped += 1
 
@@ -392,5 +406,5 @@ class ImportHtmlDialog(QDialog):
             msg += f"\n⚠️ {skipped} ordine/i non importato/i (errore DB)."
 
         QMessageBox.information(self, "Importazione completata", msg)
-        logger.info(f"HTML-IMPORT: Importazione completata. Importati: {imported}, Saltati: {skipped}")
+        logger.info(f"FILE-IMPORT: Completato. Importati: {imported}, Saltati: {skipped}")
         self.accept()

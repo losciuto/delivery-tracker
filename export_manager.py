@@ -1,16 +1,16 @@
 """
-Export functionality for Delivery Tracker.
-Supports CSV, JSON, and Excel formats with formatting.
+Export/Import functionality for Delivery Tracker.
+Supports CSV, JSON, and Excel (.xlsx/.xls) formats.
 """
 import csv
 import json
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
 import utils
 
 try:
-    from openpyxl import Workbook
+    from openpyxl import Workbook, load_workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
     EXCEL_AVAILABLE = True
@@ -18,7 +18,118 @@ except ImportError:
     EXCEL_AVAILABLE = False
     utils.logger.warning("openpyxl not available, Excel export disabled")
 
+try:
+    import xlrd
+    XLS_AVAILABLE = True
+except ImportError:
+    XLS_AVAILABLE = False
+    utils.logger.warning("xlrd not available, .xls import disabled")
+
 logger = utils.get_logger(__name__)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Column mapping: DB field -> list of accepted header names (case-insensitive)
+# ─────────────────────────────────────────────────────────────────────────────
+COLUMN_MAPPING: Dict[str, List[str]] = {
+    'order_date':         ['data ordine', 'order_date', 'data', "data dell'ordine", 'date'],
+    'platform':           ['piattaforma', 'platform', 'store', 'negozio'],
+    'description':        ['descrizione', 'description', 'articolo', 'nome prodotto', 'product name', 'item'],
+    'seller':             ['venditore', 'seller', 'fornitore'],
+    'destination':        ['destinazione', 'destination', 'indirizzo'],
+    'link':               ['link', 'url', 'collegamento'],
+    'quantity':           ['quantità', 'q.tà', 'quantity', 'qty', 'quantita'],
+    'estimated_delivery': ['cons. prevista', 'estimated_delivery', 'consegna', 'consegna prevista', 'delivery date'],
+    'alarm_enabled':      ['alarm_enabled', 'allarme'],
+    'is_delivered':       ['consegnato', 'is_delivered', 'delivered'],
+    'position':           ['posizione', 'position'],
+    'notes':              ['note', 'notes', 'annotazioni'],
+    'category':           ['categoria', 'category'],
+    'tracking_number':    ['n. tracking', 'tracking_number', 'tracking', 'numero tracking', 'codice tracking'],
+    'carrier':            ['vettore', 'carrier', 'corriere'],
+    'last_mile_carrier':  ['ultimo miglio', 'last_mile_carrier', 'last mile'],
+    'site_order_id':      ['id ordine sito', 'site_order_id', 'id ordine', 'order id', 'numero ordine'],
+    'status':             ['stato', 'status'],
+    'price':              ['prezzo prodotto (eur)', 'price', 'prezzo', 'costo', 'prezzo prodotto', 'prezzo unitario'],
+    'image_url':          ['immagine', 'image_url', 'image url', 'foto', 'url immagine'],
+}
+
+# Reverse lookup: normalized header -> DB field
+_HEADER_TO_FIELD: Dict[str, str] = {}
+for _field, _aliases in COLUMN_MAPPING.items():
+    for _alias in _aliases:
+        _HEADER_TO_FIELD[_alias.lower().strip()] = _field
+
+
+def _normalize_header(h: str) -> str:
+    """Normalize a column header for lookup."""
+    return str(h).lower().strip()
+
+
+def _build_header_map(headers: List[str]) -> Dict[str, int]:
+    """
+    Given a list of raw column headers, return a dict mapping
+    DB field name -> column index. Unknown columns are ignored.
+    """
+    mapping = {}
+    for idx, raw in enumerate(headers):
+        normalized = _normalize_header(raw)
+        field = _HEADER_TO_FIELD.get(normalized)
+        if field and field not in mapping:
+            mapping[field] = idx
+    return mapping
+
+
+def _cast_row(row_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Cast/clean values from a raw imported row."""
+    result = dict(row_dict)
+
+    # Quantity: int
+    if 'quantity' in result:
+        try:
+            result['quantity'] = int(float(str(result['quantity']))) if result['quantity'] not in ('', None) else 1
+        except (ValueError, TypeError):
+            result['quantity'] = 1
+
+    # Price: float or None
+    if 'price' in result:
+        try:
+            val = str(result['price']).replace(',', '.').replace('€', '').strip()
+            result['price'] = float(val) if val else None
+        except (ValueError, TypeError):
+            result['price'] = None
+
+    # is_delivered: bool
+    if 'is_delivered' in result:
+        v = str(result['is_delivered']).lower().strip()
+        result['is_delivered'] = v in ('true', '1', 'yes', 'sì', 'si', 'consegnato')
+
+    # alarm_enabled: bool
+    if 'alarm_enabled' in result:
+        v = str(result['alarm_enabled']).lower().strip()
+        result['alarm_enabled'] = v in ('true', '1', 'yes', 'sì', 'si')
+
+    # Strip strings
+    for k, v in result.items():
+        if isinstance(v, str):
+            result[k] = v.strip()
+
+    return result
+
+
+def detect_import_format(filepath: str) -> Optional[str]:
+    """Detect the import format from file extension."""
+    ext = Path(filepath).suffix.lower()
+    if ext == '.xlsx':
+        return 'xlsx'
+    elif ext == '.xls':
+        return 'xls'
+    elif ext == '.csv':
+        return 'csv'
+    elif ext == '.json':
+        return 'json'
+    return None
+
+
 
 
 class ExportManager:
@@ -184,61 +295,162 @@ class ExportManager:
             return False
     
     @staticmethod
-    def import_from_json(filepath: str) -> tuple[bool, List[Dict[str, Any]]]:
-        """Import orders from JSON file"""
+    def import_from_json(filepath: str) -> Tuple[bool, List[Dict[str, Any]]]:
+        """Import orders from JSON file (exported by this app or compatible format)."""
         try:
-            with open(filepath, 'r', encoding='utf-8') as jsonfile:
-                orders = json.load(jsonfile)
-            
-            # Validate and clean data
-            cleaned_orders = []
-            for order in orders:
-                # Remove id and timestamps to avoid conflicts
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            if isinstance(data, dict):
+                # Maybe wrapped: {"orders": [...]}
+                data = data.get('orders', [])
+
+            cleaned = []
+            for order in data:
                 order.pop('id', None)
                 order.pop('created_at', None)
                 order.pop('updated_at', None)
-                cleaned_orders.append(order)
-            
-            logger.info(f"Loaded {len(cleaned_orders)} orders from JSON: {filepath}")
-            return True, cleaned_orders
-            
+                cleaned.append(_cast_row(order))
+
+            logger.info(f"Loaded {len(cleaned)} orders from JSON: {filepath}")
+            return True, cleaned
+
         except Exception as e:
             logger.error(f"Error importing from JSON: {e}")
             return False, []
-    
+
     @staticmethod
-    def import_from_csv(filepath: str) -> tuple[bool, List[Dict[str, Any]]]:
-        """Import orders from CSV file"""
+    def import_from_csv(filepath: str) -> Tuple[bool, List[Dict[str, Any]]]:
+        """Import orders from CSV with dynamic column mapping and encoding fallback."""
+        orders = []
+        for encoding in ('utf-8-sig', 'utf-8', 'latin-1', 'cp1252'):
+            try:
+                with open(filepath, newline='', encoding=encoding) as f:
+                    reader = csv.reader(f)
+                    headers = next(reader, None)
+                    if not headers:
+                        return True, []
+
+                    header_map = _build_header_map(headers)
+
+                    for raw_row in reader:
+                        if not any(c.strip() for c in raw_row):
+                            continue  # skip empty lines
+                        row_dict = {}
+                        for field, col_idx in header_map.items():
+                            if col_idx < len(raw_row):
+                                row_dict[field] = raw_row[col_idx]
+                        if row_dict:
+                            orders.append(_cast_row(row_dict))
+
+                logger.info(f"Loaded {len(orders)} orders from CSV ({encoding}): {filepath}")
+                return True, orders
+
+            except UnicodeDecodeError:
+                continue
+            except Exception as e:
+                logger.error(f"Error importing from CSV: {e}")
+                return False, []
+
+        logger.error(f"Could not decode CSV file: {filepath}")
+        return False, []
+
+    @staticmethod
+    def import_from_excel(filepath: str) -> Tuple[bool, List[Dict[str, Any]]]:
+        """Import orders from Excel (.xlsx or .xls) with dynamic column mapping."""
+        ext = Path(filepath).suffix.lower()
         try:
             orders = []
-            
-            with open(filepath, 'r', encoding='utf-8') as csvfile:
-                reader = csv.DictReader(csvfile)
-                
-                for row in reader:
-                    # Remove id if present
-                    row.pop('id', None)
-                    row.pop('created_at', None)
-                    row.pop('updated_at', None)
-                    
-                    # Convert boolean fields
-                    if 'is_delivered' in row:
-                        row['is_delivered'] = row['is_delivered'].lower() in ('true', '1', 'yes', 'sì')
-                    if 'alarm_enabled' in row:
-                        row['alarm_enabled'] = row['alarm_enabled'].lower() in ('true', '1', 'yes', 'sì')
-                    
-                    # Convert quantity to int
-                    if 'quantity' in row:
-                        try:
-                            row['quantity'] = int(row['quantity'])
-                        except:
-                            row['quantity'] = 1
-                    
-                    orders.append(row)
-            
-            logger.info(f"Loaded {len(orders)} orders from CSV: {filepath}")
+
+            if ext == '.xlsx':
+                if not EXCEL_AVAILABLE:
+                    return False, []
+                wb = load_workbook(filepath, read_only=True, data_only=True)
+                ws = wb.active
+                rows = list(ws.iter_rows(values_only=True))
+                wb.close()
+
+                if not rows:
+                    return True, []
+
+                headers = [str(h) if h is not None else '' for h in rows[0]]
+                header_map = _build_header_map(headers)
+
+                for raw_row in rows[1:]:
+                    if not any(v for v in raw_row if v is not None):
+                        continue
+                    row_dict = {}
+                    for field, col_idx in header_map.items():
+                        if col_idx < len(raw_row):
+                            val = raw_row[col_idx]
+                            # openpyxl may return datetime objects
+                            if hasattr(val, 'strftime'):
+                                val = val.strftime('%Y-%m-%d')
+                            row_dict[field] = val if val is not None else ''
+                    if row_dict:
+                        orders.append(_cast_row(row_dict))
+
+            elif ext == '.xls':
+                if not XLS_AVAILABLE:
+                    logger.error("xlrd not available for .xls import")
+                    return False, []
+                book = xlrd.open_workbook(filepath)
+                sheet = book.sheet_by_index(0)
+
+                if sheet.nrows == 0:
+                    return True, []
+
+                headers = [str(cell.value) for cell in sheet.row(0)]
+                header_map = _build_header_map(headers)
+
+                for row_idx in range(1, sheet.nrows):
+                    raw_row = sheet.row(row_idx)
+                    if not any(cell.value for cell in raw_row):
+                        continue
+                    row_dict = {}
+                    for field, col_idx in header_map.items():
+                        if col_idx < len(raw_row):
+                            val = raw_row[col_idx].value
+                            # xlrd may return floats for dates; convert if needed
+                            if raw_row[col_idx].ctype == xlrd.XL_CELL_DATE:
+                                try:
+                                    dt = xlrd.xldate_as_datetime(val, book.datemode)
+                                    val = dt.strftime('%Y-%m-%d')
+                                except Exception:
+                                    pass
+                            row_dict[field] = val if val != '' else ''
+                    if row_dict:
+                        orders.append(_cast_row(row_dict))
+            else:
+                logger.error(f"Unsupported Excel format: {ext}")
+                return False, []
+
+            logger.info(f"Loaded {len(orders)} orders from Excel ({ext}): {filepath}")
             return True, orders
-            
+
         except Exception as e:
-            logger.error(f"Error importing from CSV: {e}")
+            logger.error(f"Error importing from Excel: {e}")
             return False, []
+
+    @staticmethod
+    def import_auto(filepath: str) -> Tuple[bool, List[Dict[str, Any]], str]:
+        """
+        Auto-detect format and import.
+        Returns (success, orders, error_message).
+        """
+        fmt = detect_import_format(filepath)
+        if fmt is None:
+            return False, [], "Formato file non supportato. Usa .xlsx, .xls, .csv o .json"
+
+        if fmt in ('xlsx', 'xls'):
+            ok, orders = ExportManager.import_from_excel(filepath)
+        elif fmt == 'csv':
+            ok, orders = ExportManager.import_from_csv(filepath)
+        elif fmt == 'json':
+            ok, orders = ExportManager.import_from_json(filepath)
+        else:
+            return False, [], "Formato non riconosciuto"
+
+        if not ok:
+            return False, [], "Errore durante la lettura del file"
+        return True, orders, ""

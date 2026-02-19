@@ -1,4 +1,4 @@
-# Delivery Tracker v2.2.1
+# Delivery Tracker v2.3.0
 
 A modern and comprehensive Python desktop application to manage delivery deadlines from various online platforms.
 
@@ -206,6 +206,12 @@ delivery-tracker/
 ### Corrupted database
 - Restore from a backup in `backups/`
 - Or delete `delivery_tracker.db` to recreate it (you'll lose data)
+
+## 🔄 Updates v2.3.0
+- ✅ **Universal Import**: Support for Excel, CSV, and JSON with instant preview and smart duplicate detection.
+- ✅ **Product Insights**: New database fields for Price and Image Link, with clickable visual feedback in the main table.
+- ✅ **AI Scraping Integration**: Optimized workflow for extracting Temu orders directly via browser.
+- ✅ **UI Cleanup**: Removed obsolete HTML/URL import methods for a more streamlined and stable experience.
 
 ## 🔄 Updates v2.2.1
 - ✅ **UI Optimization**: Improved layout for 19" monitors and sidebar reorganization.

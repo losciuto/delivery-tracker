@@ -75,6 +75,8 @@ def init_db():
                     last_mile_carrier TEXT,
                     site_order_id TEXT,
                     status TEXT DEFAULT 'In Attesa',
+                    price REAL,
+                    image_url TEXT,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
@@ -126,6 +128,8 @@ def init_db():
                 ('status', "ALTER TABLE orders ADD COLUMN status TEXT DEFAULT 'In Attesa'"),
                 ('created_at', 'ALTER TABLE orders ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP'),
                 ('updated_at', 'ALTER TABLE orders ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP'),
+                ('price', 'ALTER TABLE orders ADD COLUMN price REAL'),
+                ('image_url', 'ALTER TABLE orders ADD COLUMN image_url TEXT'),
             ]
             
             for column_name, migration_sql in migrations:
@@ -150,9 +154,9 @@ def add_order(order_data: Dict[str, Any]) -> Optional[int]:
                     link, quantity, estimated_delivery, alarm_enabled, 
                     is_delivered, position, notes, category,
                     tracking_number, carrier, last_mile_carrier, site_order_id,
-                    status
+                    status, price, image_url
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 order_data['order_date'],
                 order_data['platform'],
@@ -171,7 +175,9 @@ def add_order(order_data: Dict[str, Any]) -> Optional[int]:
                 order_data.get('carrier', ''),
                 order_data.get('last_mile_carrier', ''),
                 order_data.get('site_order_id', ''),
-                order_data.get('status', 'In Attesa')
+                order_data.get('status', 'In Attesa'),
+                order_data.get('price', None),
+                order_data.get('image_url', ''),
             ))
             
             order_id = cursor.lastrowid
@@ -264,6 +270,8 @@ def update_order(order_id: int, order_data: Dict[str, Any]) -> bool:
                     last_mile_carrier = ?,
                     site_order_id = ?,
                     status = ?,
+                    price = ?,
+                    image_url = ?,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             ''', (
@@ -287,6 +295,8 @@ def update_order(order_id: int, order_data: Dict[str, Any]) -> bool:
                 order_data.get('last_mile_carrier', ''),
                 order_data.get('site_order_id', ''),
                 order_data.get('status', 'In Attesa'),
+                order_data.get('price', None),
+                order_data.get('image_url', ''),
                 order_id
             ))
             

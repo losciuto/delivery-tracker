@@ -215,12 +215,28 @@ class OrderDialog(QDialog):
         self.category_input.setCurrentText(self.order_data.get('category', ''))
         
         if self.order_data.get('order_date'):
-            od = datetime.strptime(self.order_data['order_date'], '%Y-%m-%d').date()
-            self.order_date_input.setDate(QDate(od.year, od.month, od.day))
+            od_str = self.order_data['order_date']
+            try:
+                od_date = datetime.strptime(od_str, '%Y-%m-%d').date()
+                self.order_date_input.setDate(QDate(od_date.year, od_date.month, od_date.day))
+            except ValueError:
+                parsed_od = utils.DateHelper.parse_date(od_str)
+                if parsed_od:
+                    self.order_date_input.setDate(QDate(parsed_od.year, parsed_od.month, parsed_od.day))
+                else:
+                    self.order_date_input.setDate(QDate.currentDate())
             
         if self.order_data.get('estimated_delivery'):
-            ed = datetime.strptime(self.order_data['estimated_delivery'], '%Y-%m-%d').date()
-            self.est_delivery_input.setDate(QDate(ed.year, ed.month, ed.day))
+            ed_str = self.order_data['estimated_delivery']
+            try:
+                ed_date = datetime.strptime(ed_str, '%Y-%m-%d').date()
+                self.est_delivery_input.setDate(QDate(ed_date.year, ed_date.month, ed_date.day))
+            except ValueError:
+                parsed_ed = utils.DateHelper.parse_date(ed_str)
+                if parsed_ed:
+                    self.est_delivery_input.setDate(QDate(parsed_ed.year, parsed_ed.month, parsed_ed.day))
+                else:
+                    self.est_delivery_input.setDate(QDate.currentDate())
             
         self.alarm_cb.setChecked(bool(self.order_data.get('alarm_enabled', True)))
         self.delivered_cb.setChecked(bool(self.order_data.get('is_delivered', False)))

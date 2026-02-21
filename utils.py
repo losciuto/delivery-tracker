@@ -107,11 +107,13 @@ class DateHelper:
     
     @staticmethod
     def parse_date(date_str: str, format_str: str = '%Y-%m-%d') -> Optional[date]:
-        """Parse date string to date object"""
+        """Parse date string to date object, with smart fallback"""
+        if not date_str:
+            return None
         try:
             return datetime.strptime(date_str, format_str).date()
         except ValueError:
-            return None
+            return DateHelper.parse_smart(date_str)
     
     @staticmethod
     def days_until(target_date: date) -> int:

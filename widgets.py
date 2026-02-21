@@ -16,12 +16,14 @@ import config
 
 class StatCard(QFrame):
     """A card widget displaying a statistic"""
+    clicked = pyqtSignal(str)  # Emits the title or a type identifier
     
     def __init__(self, title: str, value: str, icon: str = "", color: str = "#2196F3", parent=None):
         super().__init__(parent)
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.target_color = color
         self.title = title
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setup_ui(value)
         self.update_theme()
         
@@ -60,9 +62,16 @@ class StatCard(QFrame):
         """Update the displayed value"""
         self.value_label.setText(value)
 
+    def mousePressEvent(self, event):
+        """Handle click event"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit(self.title)
+        super().mousePressEvent(event)
+
 
 class DashboardWidget(QWidget):
     """Dashboard showing statistics and overview"""
+    card_clicked = pyqtSignal(str) # Emits card type (e.g., 'pending', 'delivered', 'overdue')
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -88,6 +97,12 @@ class DashboardWidget(QWidget):
         self.pending_card = StatCard("In Attesa", "0", color="#FF9800")
         self.delivered_card = StatCard("Consegnati", "0", color="#4CAF50")
         self.overdue_card = StatCard("Scaduti", "0", color="#F44336")
+        
+        # Connect signals
+        self.total_card.clicked.connect(lambda: self.card_clicked.emit("all"))
+        self.pending_card.clicked.connect(lambda: self.card_clicked.emit("pending"))
+        self.delivered_card.clicked.connect(lambda: self.card_clicked.emit("delivered"))
+        self.overdue_card.clicked.connect(lambda: self.card_clicked.emit("overdue"))
         
         cards_layout.addWidget(self.total_card, 0, 0)
         cards_layout.addWidget(self.pending_card, 0, 1)

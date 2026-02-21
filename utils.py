@@ -8,6 +8,8 @@ import logging
 import shutil
 from datetime import datetime, date, timedelta
 from typing import Optional, Dict, Any, List
+import base64
+import requests
 from pathlib import Path
 import config
 
@@ -694,6 +696,108 @@ def get_stylesheet(theme='light'):
             padding: 6px;
         }}
     """
+
+
+class ImageDownloader:
+    """Utility for downloading images and converting to binary/base64"""
+    
+    @staticmethod
+    def download_image(url: str) -> Optional[bytes]:
+        """Download image from URL and return as bytes"""
+        if not url:
+            return None
+        
+        # Le miniature in formato AVIF non sono sempre compatibili con PyQt6.
+        # Spesso URL come quelli di Temu terminano con format/avif, possiamo forzare jpeg.
+        import re
+        if 'format/avif' in url:
+            url = url.replace('format/avif', 'format/jpeg')
+
+        try:
+            # Add common user-agent to avoid being blocked
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            
+            # Basic check if it's an image
+            content_type = response.headers.get('Content-Type', '')
+            if 'image' not in content_type and not url.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+                logger.warning(f"URL might not be an image: {url} (Content-Type: {content_type})")
+            
+            return response.content
+        except Exception as e:
+            logger.error(f"Error downloading image from {url}: {e}")
+            return None
+
+    @staticmethod
+    def to_base64(image_data: bytes) -> Optional[str]:
+        """Convert binary image data to base64 string for HTML use"""
+        if not image_data:
+            return None
+        try:
+            encoded = base64.b64encode(image_data).decode('utf-8')
+            # We don't know the exact mime type here, so we use a generic placeholder or try to infer
+            # JPEG/PNG are safest defaults for web.
+            return f"data:image/png;base64,{encoded}"
+        except Exception as e:
+            logger.error(f"Error encoding image to base64: {e}")
+            return None
+
+
+class TrackingHelper:
+    """Utility for generating tracking URLs for various carriers"""
+    
+    TRACKING_URLS = {
+        'Amazon': 'https://www.amazon.it/gp/your-account/order-history',
+        'Amazon.it': 'https://www.amazon.it/gp/your-account/order-history',
+        'UPS': 'https://www.ups.com/track?loc=it_IT&tracknum={number}',
+        'DHL': 'https://www.dhl.com/it-it/home/tracciamento.html?tracking_number={number}',
+        'FedEx': 'https://www.fedex.com/fedextrack/?tracknumbers={number}',
+        'GLS': 'https://www.gls-italy.com/it/servizi-per-te/m-tracking?view=mtracking&tracknum={number}',
+        'Poste Italiane': 'https://www.poste.it/cerca/index.html#/risultati-spedizioni/{number}',
+        'BRT': 'https://www.brt.it/it/tracking?n_spedizione={number}',
+        'SDA': 'https://www.sda.it/wps/portal/SDAit/IT/Tracking?consegna={number}',
+        'Too Good To Go': 'https://toogoodtogo.it/it', # TGTG doesn't have public tracking page, usually handled in-app
+        'AliExpress': 'https://global.cainiao.com/detail.htm?mailNo={number}',
+        'Temu': 'https://www.temu.com/it/order-list.html',
+        'Shein': 'https://www.shein.com/user/order/list',
+        'Vinted': 'https://www.vinted.it/member/items/purchased',
+        'eBay': 'https://www.ebay.it/sh/ord',
+    }
+    
+    @classmethod
+    def get_tracking_url(cls, number: str, carrier: Optional[str] = None) -> Optional[str]:
+        """Generate a tracking URL based on number and carrier"""
+        if not number:
+            return None
+            
+        number = str(number).strip()
+        carrier = (carrier or "").strip()
+        
+        # 1. Match by carrier if provided
+        if carrier in cls.TRACKING_URLS:
+            url_template = cls.TRACKING_URLS[carrier]
+            if '{number}' in url_template:
+                return url_template.format(number=number)
+            return url_template
+            
+        # 2. Heuristic matching if carrier is unknown or not in list
+        if re.match(r'^1Z[A-Z0-9]{16}$', number, re.IGNORECASE):
+            return cls.TRACKING_URLS['UPS'].format(number=number)
+        elif re.match(r'^\d{10,12}$', number):
+            # Could be many things, but Poste Italiane/DHL are common
+            return cls.TRACKING_URLS['Poste Italiane'].format(number=number)
+        elif re.match(r'^[A-Z]{2}\d{9}[A-Z]{2}$', number, re.IGNORECASE):
+            # EMS/Poste Italiane standard
+            return cls.TRACKING_URLS['Poste Italiane'].format(number=number)
+            
+        # 3. Fallback to generic Cainiao for international stuff if it looks like tracking
+        if len(number) > 8 and re.match(r'^[A-Z0-9]+$', number):
+            return cls.TRACKING_URLS['AliExpress'].format(number=number)
+            
+        return None
 
 
 def get_logger(name: str) -> logging.Logger:

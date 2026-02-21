@@ -77,6 +77,7 @@ def init_db():
                     status TEXT DEFAULT 'In Attesa',
                     price REAL,
                     image_url TEXT,
+                    image_blob BLOB,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
@@ -130,6 +131,7 @@ def init_db():
                 ('updated_at', 'ALTER TABLE orders ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP'),
                 ('price', 'ALTER TABLE orders ADD COLUMN price REAL'),
                 ('image_url', 'ALTER TABLE orders ADD COLUMN image_url TEXT'),
+                ('image_blob', 'ALTER TABLE orders ADD COLUMN image_blob BLOB'),
             ]
             
             for column_name, migration_sql in migrations:
@@ -154,9 +156,9 @@ def add_order(order_data: Dict[str, Any]) -> Optional[int]:
                     link, quantity, estimated_delivery, alarm_enabled, 
                     is_delivered, position, notes, category,
                     tracking_number, carrier, last_mile_carrier, site_order_id,
-                    status, price, image_url
+                    status, price, image_url, image_blob
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 order_data['order_date'],
                 order_data['platform'],
@@ -178,6 +180,7 @@ def add_order(order_data: Dict[str, Any]) -> Optional[int]:
                 order_data.get('status', 'In Attesa'),
                 order_data.get('price', None),
                 order_data.get('image_url', ''),
+                order_data.get('image_blob', None),
             ))
             
             order_id = cursor.lastrowid
@@ -190,8 +193,12 @@ def add_order(order_data: Dict[str, Any]) -> Optional[int]:
 
 
 def get_orders(include_delivered: bool = True, search: str = '', 
-               platform_filter: str = '', category_filter: str = '') -> List[Dict[str, Any]]:
-    """Get orders with optional filters"""
+               platform_filter: str = '', category_filter: str = '',
+               delivery_mode: str = 'all') -> List[Dict[str, Any]]:
+    """
+    Get orders with optional filters.
+    delivery_mode can be: 'all', 'pending', 'delivered', 'overdue'
+    """
     try:
         # We use get_db_connection directly for reads to avoid transaction overhead of context manager
         # or we could implement a read-only context manager. 
@@ -205,9 +212,15 @@ def get_orders(include_delivered: bool = True, search: str = '',
                 query += ' AND is_delivered = 0'
             
             if search:
-                query += ' AND (description LIKE ? OR seller LIKE ? OR notes LIKE ?)'
+                search_fields = [
+                    'description', 'seller', 'notes', 'tracking_number', 
+                    'site_order_id', 'platform', 'carrier', 'last_mile_carrier',
+                    'destination', 'position', 'category', 'status'
+                ]
+                search_cond = ' OR '.join([f"{field} LIKE ?" for field in search_fields])
+                query += f' AND ({search_cond})'
                 search_param = f'%{search}%'
-                params.extend([search_param, search_param, search_param])
+                params.extend([search_param] * len(search_fields))
             
             if platform_filter:
                 query += ' AND platform = ?'
@@ -217,11 +230,28 @@ def get_orders(include_delivered: bool = True, search: str = '',
                 query += ' AND category = ?'
                 params.append(category_filter)
             
+            # Post-processing for complex filters like 'overdue'
             query += ' ORDER BY created_at DESC, estimated_delivery ASC'
             
             cursor = conn.execute(query, params)
-            orders = cursor.fetchall()
-            return [dict(order) for order in orders]
+            orders = [dict(row) for row in cursor.fetchall()]
+            
+            # Filter by delivery_mode
+            if delivery_mode == 'pending':
+                orders = [o for o in orders if not o['is_delivered']]
+            elif delivery_mode == 'delivered':
+                orders = [o for o in orders if o['is_delivered']]
+            elif delivery_mode == 'overdue':
+                # Re-calculate overdue status since it's date-dependent
+                filtered = []
+                for o in orders:
+                    if not o['is_delivered'] and o.get('estimated_delivery'):
+                        est_date = utils.DateHelper.parse_date(o['estimated_delivery'])
+                        if est_date and utils.DateHelper.get_date_status(est_date) == 'overdue':
+                            filtered.append(o)
+                orders = filtered
+                
+            return orders
         finally:
             conn.close()
             
@@ -272,6 +302,7 @@ def update_order(order_id: int, order_data: Dict[str, Any]) -> bool:
                     status = ?,
                     price = ?,
                     image_url = ?,
+                    image_blob = ?,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             ''', (
@@ -297,6 +328,7 @@ def update_order(order_id: int, order_data: Dict[str, Any]) -> bool:
                 order_data.get('status', 'In Attesa'),
                 order_data.get('price', None),
                 order_data.get('image_url', ''),
+                order_data.get('image_blob', None),
                 order_id
             ))
             
@@ -400,6 +432,37 @@ def mark_as_delivered(order_id: int, delivered: bool = True) -> bool:
     except Exception as e:
         logger.error(f"Error marking order {order_id} as delivered: {e}")
         return False
+
+
+def batch_download_images() -> int:
+    """Download images for all orders that have a URL but no BLOB"""
+    try:
+        conn = get_db_connection()
+        # Find orders with image_url but no image_blob
+        orders = conn.execute(
+            "SELECT id, image_url FROM orders WHERE image_url IS NOT NULL AND image_url != '' AND image_blob IS NULL"
+        ).fetchall()
+        
+        count = 0
+        for row in orders:
+            order_id = row['id']
+            url = row['image_url']
+            
+            blob = utils.ImageDownloader.download_image(url)
+            if blob:
+                conn.execute(
+                    "UPDATE orders SET image_blob = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (blob, order_id)
+                )
+                conn.commit()
+                count += 1
+                logger.info(f"Downloaded image for order {order_id}")
+        
+        conn.close()
+        return count
+    except Exception as e:
+        logger.error(f"Error in batch image download: {e}")
+        return 0
 
 
 # Category Management

@@ -4,6 +4,17 @@ Tutte le modifiche importanti a questo progetto saranno documentate in questo fi
 
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/),
 e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/).
+## [2.6.0] - 2026-02-20
+### ✨ Aggiunte
+- **Ricerca Globale Ottimizzata**: Sistema di ricerca esteso a tutti i campi dell'ordine (Tracking, ID Ordine Sito, Destinazione, Vettore, ecc.).
+- **Persistenza Immagini (BLOB)**: Supporto per il download e la memorizzazione binaria delle immagini dei prodotti direttamente nel database.
+- **Thumbnail Tooltips**: Anteprima visiva istantanea (150px) al passaggio del mouse su qualsiasi cella della tabella degli ordini.
+- **Deep Scraping AliExpress**: Implementata l'estrazione automatizzata di dettagli avanzati (Venditore, Destinazione, Tracking e Consegna Stimata) tramite browser subagent.
+
+### 🔧 Ottimizzazioni
+- Migrazione automatica del database per l'aggiunta della colonna `image_blob`.
+- Migliorata la reattività dell'interfaccia durante il caricamento delle miniature base64.
+
 ## [2.5.1] - 2026-02-19
 ### 🧹 Pulizia e Manutenzione
 - **Rimozione File Obsoleti**: Eliminati vecchi parser HTML, script di test e verifica non più necessari per il corretto funzionamento dell'applicazione.

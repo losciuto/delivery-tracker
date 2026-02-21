@@ -36,17 +36,33 @@ class NumericTableWidgetItem(QTableWidgetItem):
 
 class SyncWorker(QObject):
     """Worker for asynchronous email synchronization"""
-    finished = pyqtSignal(int)
+    finished = pyqtSignal(int, int) # count, img_count
     error = pyqtSignal(str)
 
     def run(self):
         try:
             from email_manager import EmailSyncManager
+            import database
             sync_manager = EmailSyncManager()
             count = sync_manager.sync_with_db()
-            self.finished.emit(count)
+            img_count = database.batch_download_images()
+            self.finished.emit(count, img_count)
         except Exception as e:
             # Assicuriamoci che l'errore venga propagato alla UI
+            self.error.emit(str(e))
+
+
+class ImageRepairWorker(QObject):
+    """Worker for asynchronous image downloading/repairing"""
+    finished = pyqtSignal(int)
+    error = pyqtSignal(str)
+
+    def run(self):
+        try:
+            import database
+            img_count = database.batch_download_images()
+            self.finished.emit(img_count)
+        except Exception as e:
             self.error.emit(str(e))
 
 
@@ -87,7 +103,7 @@ class MainWindow(QMainWindow):
         self.current_search = ''
         self.current_platform_filter = ''
         self.current_category_filter = ''
-
+        self.current_delivery_filter = 'all'  # 'all', 'pending', 'delivered', 'overdue'
         self.setup_ui()
         self.refresh_data()
         self.check_overdue_items()
@@ -123,6 +139,7 @@ class MainWindow(QMainWindow):
 
         # Dashboard view
         self.dashboard = DashboardWidget()
+        self.dashboard.card_clicked.connect(self.on_dashboard_card_clicked)
         self.content_stack.addWidget(self.dashboard)
 
         main_layout.addWidget(self.content_stack)
@@ -265,6 +282,7 @@ class MainWindow(QMainWindow):
         self.table.hideColumn(0)  # Hide ID
 
         # Adjust column widths
+        self.table.setColumnWidth(5, 250)  # Descrizione (Initial width)
         self.table.setColumnWidth(10, 160) # Cons. Prevista
         self.table.setColumnWidth(1, 100)  # Data
         self.table.setColumnWidth(9, 60)   # Q.tà
@@ -274,7 +292,7 @@ class MainWindow(QMainWindow):
 
         # Behavior for other columns
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)  # Descrizione
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)  # Descrizione (Now resizable)
         header.setSectionResizeMode(17, QHeaderView.ResizeMode.Stretch) # Note
 
         # Interactive for most, but ensure good initial fit
@@ -347,6 +365,10 @@ class MainWindow(QMainWindow):
         self.sync_email_action.triggered.connect(self.sync_emails)
         self.tools_menu.addAction(self.sync_email_action)
 
+        self.repair_images_action = QAction("🖼️ Ripara Immagini Mancanti", self)
+        self.repair_images_action.triggered.connect(self.repair_images)
+        self.tools_menu.addAction(self.repair_images_action)
+
         self.tools_menu.addSeparator()
 
         self.settings_action_menu = QAction("⚙️ Impostazioni", self)
@@ -384,11 +406,22 @@ class MainWindow(QMainWindow):
         menu.exec(self.table.viewport().mapToGlobal(position))
 
     def on_cell_clicked(self, row, column):
-        """Handle cell click (for links)"""
+        """Handle cell click (for links and tracking)"""
         if column == 8:  # Link column
             item = self.table.item(row, column)
             if item and item.text():
                 webbrowser.open(item.text())
+        elif column == 12:  # Tracking number column
+            item = self.table.item(row, column)
+            carrier_item = self.table.item(row, 13)
+            if item and item.text():
+                tracking_number = item.text()
+                carrier = carrier_item.text() if carrier_item else None
+                url = utils.TrackingHelper.get_tracking_url(tracking_number, carrier)
+                if url:
+                    webbrowser.open(url)
+                else:
+                    QMessageBox.information(self, "Tracking", f"Impossibile generare link di tracking per: {tracking_number}")
         elif column == 19:  # Immagine URL column
             item = self.table.item(row, column)
             if item and item.text():
@@ -397,6 +430,7 @@ class MainWindow(QMainWindow):
     def on_search_changed(self, search_text):
         """Handle search text change"""
         self.current_search = search_text
+        self.current_delivery_filter = 'all'  # Reset dashboard-specific filter
         self.refresh_table()
 
     def on_filter_changed(self, filters):
@@ -404,6 +438,14 @@ class MainWindow(QMainWindow):
         self.current_platform_filter = filters.get('platform', '')
         self.current_category_filter = filters.get('category', '')
         self.settings['show_delivered'] = filters.get('show_delivered', True)
+        self.current_delivery_filter = 'all'  # Reset dashboard-specific filter
+        self.refresh_table()
+
+    def on_dashboard_card_clicked(self, filter_type):
+        """Handle clicks on dashboard cards to filter orders."""
+        logger.info(f"Dashboard card clicked: {filter_type}")
+        self.current_delivery_filter = filter_type
+        self.content_stack.setCurrentIndex(0)  # Switch to orders view
         self.refresh_table()
 
     def refresh_data(self):
@@ -417,12 +459,15 @@ class MainWindow(QMainWindow):
         self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
 
-        # Get orders with filters
+        # Get matching orders
+        include_delivered = self.settings.get('show_delivered', True)
+        
         orders = database.get_orders(
-            include_delivered=self.settings.get('show_delivered', True),
+            include_delivered=include_delivered,
             search=self.current_search,
             platform_filter=self.current_platform_filter,
-            category_filter=self.current_category_filter
+            category_filter=self.current_category_filter,
+            delivery_mode=self.current_delivery_filter
         )
 
         # Determine current theme colors
@@ -479,7 +524,18 @@ class MainWindow(QMainWindow):
             self.table.setItem(row, 9, NumericTableWidgetItem(str(order.get('quantity', 1))))
             self.table.setItem(row, 10, QTableWidgetItem(order.get('estimated_delivery', '')))
             self.table.setItem(row, 11, QTableWidgetItem(order.get('position', '')))
-            self.table.setItem(row, 12, QTableWidgetItem(order.get('tracking_number', '')))
+            
+            # Tracking number with link-like formatting
+            tracking = order.get('tracking_number', '')
+            tracking_item = QTableWidgetItem(tracking)
+            if tracking:
+                tracking_item.setForeground(QBrush(QColor("blue") if theme_name == 'light' else QColor("#64B5F6")))
+                font = tracking_item.font()
+                font.setUnderline(True)
+                tracking_item.setFont(font)
+                tracking_item.setToolTip(f"📑 Clicca per tracciare la spedizione:\n{tracking}")
+            self.table.setItem(row, 12, tracking_item)
+            
             self.table.setItem(row, 13, QTableWidgetItem(order.get('carrier', '')))
             self.table.setItem(row, 14, QTableWidgetItem(order.get('last_mile_carrier', '')))
             self.table.setItem(row, 15, QTableWidgetItem(order.get('category', '')))
@@ -502,11 +558,33 @@ class MainWindow(QMainWindow):
                 image_item.setToolTip(f"🖼 Clicca per aprire l'immagine:\n{image_url}")
             self.table.setItem(row, 19, image_item)
 
-            # Add tooltips
+            # Add tooltips with image preview
+            # Use BLOB images for speed/offline access, fallback to URL
+            image_url = order.get('image_url', '')
+            image_blob = order.get('image_blob')
+            
+            tooltip_image_src = None
+            if image_blob:
+                tooltip_image_src = utils.ImageDownloader.to_base64(image_blob)
+            elif image_url:
+                tooltip_image_src = image_url
+
             for col in range(20):
                 item = self.table.item(row, col)
-                if item and not item.toolTip():
-                    item.setToolTip(item.text())
+                if item:
+                    text = item.text()
+                    if tooltip_image_src:
+                        # Rich HTML tooltip with image
+                        tooltip_html = (
+                            f"<div style='margin: 5px; width: 160px;'>"
+                            f"<p style='margin: 0 0 5px 0;'><b>{text}</b></p>"
+                            f"<hr style='border: 0; border-top: 1px solid #ddd; margin-bottom: 5px;'>"
+                            f"<img src='{tooltip_image_src}' width='150' height='150' style='border: 1px solid #ccc; background: white;'>"
+                            f"</div>"
+                        )
+                        item.setToolTip(tooltip_html)
+                    else:
+                        item.setToolTip(text)
 
             # Color rows based on status
             if order.get('is_delivered'):
@@ -900,20 +978,72 @@ class MainWindow(QMainWindow):
         # Start the thread
         self.sync_thread.start()
 
-    def on_sync_finished(self, count):
+    def on_sync_finished(self, count, img_count=0):
         """Handle sync completion"""
-        logger.info(f"MAIN-WINDOW: Sincronizzazione terminata con successo ({count} aggiornamenti)")
+        logger.info(f"MAIN-WINDOW: Sincronizzazione terminata con successo ({count} aggiornamenti, {img_count} immagini)")
         if hasattr(self, 'progress_dialog'):
             self.progress_dialog.close()
             del self.progress_dialog
         
         self.sync_email_action.setEnabled(True)
         
+        msg_parts = []
         if count > 0:
-            QMessageBox.information(self, "Email Sync", f"Sincronizzazione completata!\nAggiornati {count} ordini con nuove informazioni.")
+            msg_parts.append(f"Aggiornati {count} ordini con nuove informazioni.")
+        else:
+            msg_parts.append("Nessun nuovo aggiornamento trovato nelle email.")
+            
+        if img_count > 0:
+            msg_parts.append(f"Recuperate {img_count} immagini mancanti.")
+            
+        QMessageBox.information(self, "Email Sync", "\n".join(msg_parts))
+        if count > 0 or img_count > 0:
+            self.refresh_data()
+
+    def repair_images(self):
+        """Manually trigger image repair"""
+        self.repair_images_action.setEnabled(False)
+        self.progress_dialog = QProgressDialog("Recupero immagini in corso...", None, 0, 0, self)
+        self.progress_dialog.setWindowTitle("Ripara Immagini")
+        self.progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        self.progress_dialog.setCancelButton(None)
+        self.progress_dialog.show()
+
+        self.repair_thread = QThread()
+        self.repair_worker = ImageRepairWorker()
+        self.repair_worker.moveToThread(self.repair_thread)
+        
+        self.repair_thread.started.connect(self.repair_worker.run)
+        self.repair_worker.finished.connect(self.on_repair_finished)
+        self.repair_worker.error.connect(self.on_repair_error)
+        
+        self.repair_worker.finished.connect(self.repair_thread.quit)
+        self.repair_worker.error.connect(self.repair_thread.quit)
+        self.repair_worker.finished.connect(self.repair_worker.deleteLater)
+        self.repair_worker.error.connect(self.repair_worker.deleteLater)
+        self.repair_thread.finished.connect(self.repair_thread.deleteLater)
+        
+        self.repair_thread.start()
+
+    def on_repair_finished(self, img_count):
+        if hasattr(self, 'progress_dialog'):
+            self.progress_dialog.close()
+            del self.progress_dialog
+            
+        self.repair_images_action.setEnabled(True)
+        if img_count > 0:
+            QMessageBox.information(self, "Ripara Immagini", f"Recuperate {img_count} immagini con successo!")
             self.refresh_data()
         else:
-            QMessageBox.information(self, "Email Sync", "Nessun nuovo aggiornamento trovato nelle email.")
+            QMessageBox.information(self, "Ripara Immagini", "Nessuna immagine mancante trovata.\nTutte le immagini sono presenti.")
+
+    def on_repair_error(self, error_msg):
+        if hasattr(self, 'progress_dialog'):
+            self.progress_dialog.close()
+            del self.progress_dialog
+            
+        self.repair_images_action.setEnabled(True)
+        QMessageBox.critical(self, "Errore", f"Errore durante il recupero:\n{error_msg}")
 
     def on_sync_error(self, error_msg):
         """Handle sync error"""

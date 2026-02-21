@@ -1,4 +1,4 @@
-# Scadenziario Consegne (Delivery Tracker) v2.5.1
+# Scadenziario Consegne (Delivery Tracker) v2.6.0
 
 Un'applicazione desktop moderna e completa in Python per gestire le scadenze delle consegne da diverse piattaforme online.
 
@@ -27,9 +27,8 @@ Un'applicazione desktop moderna e completa in Python per gestire le scadenze del
   - Card statistiche in tempo reale
 - **Sidebar Collassabile**: Ottimizza lo spazio di lavoro
 - **Ricerca e Filtri Avanzati**:
-  - Ricerca testuale in descrizione, venditore e note
-  - Filtro per piattaforma
-  - Filtro per categoria
+  - Ricerca globale in tutti i campi (Tracking, ID Ordine, Destinazione, ecc.)
+  - Filtro per piattaforma e categoria
   - Mostra/nascondi ordini consegnati
 
 ### 🔔 Sistema di Allarmi Visivi
@@ -51,6 +50,7 @@ Un'applicazione desktop moderna e completa in Python per gestire le scadenze del
 - Gestione automatica dei backup (mantiene ultimi 10)
 - Creazione backup manuale dalle impostazioni
 - Ripristino da backup
+- **Archiviazione Immagini Locale**: Download e salvataggio automatico delle immagini nel DB (BLOB) per uso offline.
 
 ### ⚙️ Impostazioni Personalizzabili
 - Selezione tema (Chiaro/Scuro)
@@ -72,7 +72,8 @@ Un'applicazione desktop moderna e completa in Python per gestire le scadenze del
 - **Logging Completo**: Tracciamento di tutte le operazioni
 - **Performance Ottimizzate**: Indici database per query veloci
 - **Ordinamento Colonne**: Click su intestazioni per ordinare
-- **Tooltip**: Informazioni al passaggio del mouse
+- **Ricerca Globale**: Trova ordini per Numero di Tracking, ID Sito o Destinazione istantaneamente.
+- **Preview Immagini**: Tooltip con miniature (150px) ricavate dal database locale al passaggio del mouse su qualsiasi cella.
 
 ## 📥 Installazione Rapida (Linux)
 
@@ -210,8 +211,14 @@ delivery-tracker/
 ### Database corrotto
 - Ripristina da un backup in `backups/`
 - O elimina `delivery_tracker.db` per ricrearlo (perderai i dati)
-
-## 🔄 Aggiornamenti v2.4.0
+ 
+ ## 🔄 Aggiornamenti v2.6.0
+ - ✅ **Ricerca Globale Ottimizzata**: Estesa la ricerca a tutti i campi (Tracking, ID Ordine Sito, Destinazione, Vettore, ecc.).
+ - ✅ **Persistence Imaging (BLOB)**: Le immagini dei prodotti vengono ora scaricate e memorizzate direttamente nel database.
+ - ✅ **Thumbnail Tooltips**: Visualizzazione istantanea di una miniatura dell'articolo (150x150) passando con il mouse su qualsiasi cella della riga.
+ - ✅ **AliExpress Deep Scraping**: Estrazione automatica avanzata di Venditore, Destinazione, Numero di Tracking e Consegna Stimata.
+ 
+ ## 🔄 Aggiornamenti v2.4.0
 - ✅ **Merge Intelligente Duplicati**: Possibilità di unire dati da file esterni in ordini esistenti, riempiendo solo i campi vuoti.
 - ✅ **Logica Best-Match**: Sistema di associazione articoli per ordini multi-prodotto basato su tokenizzazione delle descrizioni.
 - ✅ **Documentazione Scraping**: Nuova guida sulle [Soluzioni di Scraping](docs/SCRAPING_SOLUTIONS.md) e workflow assistiti.

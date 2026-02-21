@@ -1,4 +1,4 @@
-# Delivery Tracker v2.5.1
+# Delivery Tracker v2.6.0
 
 A modern and comprehensive Python desktop application to manage delivery deadlines from various online platforms.
 
@@ -11,6 +11,12 @@ A modern and comprehensive Python desktop application to manage delivery deadlin
 - ✅ **Smart Date Parser**: New intelligent parser recognizes international formats, natural language (IT/EN), and varied separators.
 - ✅ **Fuzzy Toolkit**: Centralized text comparison logic in `utils.py` for consistent "Best-Match" behavior.
 - ✅ **UI Similarity Disclosure**: Import dialog now shows exact similarity percentages in tooltips.
+ 
+ ## 🔄 Updates v2.6.0
+ - ✅ **Optimized Global Search**: Search extended to all fields (Tracking, Site Order ID, Destination, Carrier, etc.).
+ - ✅ **Persistence Imaging (BLOB)**: Product images are now downloaded and stored directly in the database.
+ - ✅ **Thumbnail Tooltips**: Instant article preview (150x150) when hovering over any cell in the row.
+ - ✅ **AliExpress Deep Scraping**: Automatic extraction of Vendor, Destination, Tracking Number, and Estimated Delivery.
 
 ## 🔄 Updates v2.4.0
 Features
@@ -40,9 +46,8 @@ Features
   - Real-time statistics cards
 - **Collapsible Sidebar**: Optimize workspace
 - **Advanced Search & Filters**:
-  - Text search in description, seller, and notes
-  - Platform filter
-  - Category filter
+  - Global search across all fields (Tracking, Order ID, Destination, etc.)
+  - Platform and Category filters
   - Show/hide delivered orders
 
 ### 🔔 Visual Alarm System
@@ -64,6 +69,7 @@ Features
 - Automatic backup management (keeps last 10)
 - Manual backup creation from settings
 - Restore from backup
+- **Local Image Storage**: Automatic download and saving of images in the DB (BLOB) for offline use.
 
 ### ⚙️ Customizable Settings
 - Theme selection (Light/Dark)
@@ -85,7 +91,8 @@ Features
 - **Complete Logging**: Tracking of all operations
 - **Optimized Performance**: Database indices for fast queries
 - **Column Sorting**: Click on headers to sort
-- **Tooltips**: Information on mouse hover
+- **Global Search**: Find orders by Tracking Number, Site ID, or Destination instantly.
+- **Image Previews**: Tooltips with thumbnails (150px) sourced from the local database when hovering over any cell.
 
 ## 📥 Quick Installation (Linux)
 

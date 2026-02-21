@@ -144,45 +144,86 @@ class EmailSyncManager:
             
             active_platform_list = list(active_platforms)
             
+            # --- Build folders to scan based on active platforms ---
+            # Map platform names to potential folder name fragments
+            platform_aliases = {
+                'amazon': ['amazon'],
+                'temu': ['temu'],
+                'ebay': ['ebay'],
+                'too good to go': ['too good to go', 'too good t go', 'tgtg', 'magico sacchetto'],
+                'aliexpress': ['aliexpress', 'cainiao'],
+                'vinted': ['vinted'],
+                'shein': ['shein'],
+                'poste italiane': ['poste', 'sda'],
+                'ups': ['ups'],
+                'dhl': ['dhl'],
+                'gls': ['gls'],
+                'brt': ['brt']
+            }
+
             folders_to_scan = []
+            platform_found_folders = set()
+
             for f in folder_list:
                 line = f.decode()
-                # Extract folder name (handling quoted names)
-                match = re.search(r'"([^"]+)"$', line) or re.search(r' ([^ ]+)$', line)
-                if match:
-                    folder_name = match.group(1).strip()
-                    lower_name = folder_name.lower()
+                # Extract folder name (handling quoted names or multi-word unquoted names)
+                # IMAP format: (Attributes) "Delimiter" Name
+                parts = line.split(' "')
+                if len(parts) >= 3:
+                    # Usually: [attributes, "delimiter", name]
+                    folder_name = parts[-1].strip().strip('"')
+                else:
+                    # Fallback to regex or last part
+                    match = re.search(r'"([^"]+)"$', line)
+                    if match:
+                        folder_name = match.group(1).strip()
+                    else:
+                        folder_name = line.split()[-1].strip('"')
+                        # If the last word is part of a multi-word name, this is still a risk,
+                        # but most IMAP servers quote multi-word names.
+                
+                lower_name = folder_name.lower()
                     
-                    # USER REQUEST: "in inbox solamente" and specific platforms
-                    # 1. Exact match for INBOX
-                    if lower_name == "inbox":
+                # 1. Check if folder matches any active platform OR its aliases
+                matched_platform = False
+                for plat in active_platform_list:
+                    aliases = platform_aliases.get(plat.lower(), [plat.lower()])
+                    if any(alias in lower_name for alias in aliases):
                         folders_to_scan.append(folder_name)
-                    
-                    # 2. Folder contains an active platform name
-                    elif any(p in lower_name for p in active_platform_list):
-                        # Ensure it's not a generic personal folder matching by pure luck
-                        # (though p is relatively specific)
+                        platform_found_folders.add(plat.lower())
+                        matched_platform = True
+                        break
+                
+                # 2. Add generic order folders (if not already added)
+                if not matched_platform and any(kw in lower_name for kw in ["order", "ordine", "spedizion"]):
+                    if "inbox/" not in lower_name:
                         folders_to_scan.append(folder_name)
-                    
-                    # 3. Generic order keywords
-                    elif any(kw in lower_name for kw in ["order", "ordine", "spedizion"]):
-                        # IMPORTANT: Avoid scanning personal subfolders of Inbox
-                        # unless they explicitly match a platform above.
-                        if "inbox/" not in lower_name:
-                            folders_to_scan.append(folder_name)
+
+            # 3. ALWAYS scan Inbox as many platforms send there
+            # (Use case: "se non trovo niente ripeto in inbox")
+            inbox_name = next((f.decode().split()[-1].strip('"') for f in folder_list if "inbox" in f.decode().lower()), "INBOX")
+            if inbox_name in folders_to_scan:
+                folders_to_scan.remove(inbox_name)
+            folders_to_scan.insert(0, inbox_name) # Put Inbox FIRST to prioritize it
             
             # Limit to max 15 folders to prevent Outlook from closing connection
             folders_to_scan = folders_to_scan[:15]
             logger.info(f"EMAIL-SYNC: Cartelle selezionate per scansione (max 15): {folders_to_scan}")
             
-            # 3. Scan each folder
-            since_date = (date.today() - timedelta(days=15)).strftime("%d-%b-%Y")
-            search_query = f'(SINCE "{since_date}")'
-            
             # Keywords for Python-side filtering
             all_keywords = ["spedito", "consegnato", "tracking", "delivery", "shipped", 
                             "ordine", "order", "acquisto", "delivered", "dispatched",
-                            "transito", "transit", "partito", "consegna", "too good to go", "to good to go", "assegnazion"]
+                            "transito", "transit", "partito", "consegna", "too good to go", "too good t go", "to good to go", 
+                            "assegnazion", "sacchetto", "ritiro", "spedizione", "tgtg"]
+            
+            # --- 3. Scan each folder ---
+            # IMPORTANT: IMAP requires English month names (Jan, Feb, ...).
+            # strftime("%b") is locale-dependent and might fail on non-English systems.
+            months_en = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+            d_target = date.today() - timedelta(days=60)
+            since_date = f"{d_target.day:02d}-{months_en[d_target.month-1]}-{d_target.year}"
+            
+            logger.info(f"EMAIL-SYNC: Data di inizio scansione (IMAP format): {since_date}")
             
             for folder in folders_to_scan:
                 try:
@@ -202,7 +243,9 @@ class EmailSyncManager:
                     
                     # Search by date (Standard IMAP SINCE)
                     try:
-                        status, messages = mail.search(None, search_query)
+                        # Passing as separate arguments ensures imaplib formats them correctly as tokens
+                        # instead of a single quoted string.
+                        status, messages = mail.search(None, 'SINCE', since_date)
                     except Exception as search_err:
                         logger.error(f"EMAIL-SYNC: Errore search in {folder}: {search_err}")
                         continue
@@ -237,58 +280,12 @@ class EmailSyncManager:
                             except: pass
 
                             # Python-side filtering: Check if subject is relevant
-                            if not any(kw in subject.lower() for kw in all_keywords):
+                            # Or if folder is already specialized
+                            is_relevant = any(kw in subject.lower() for kw in all_keywords)
+                            if not is_relevant and not ("too good to go" in folder.lower() or "tgtg" in folder.lower()):
                                 continue
 
-                            # extraction of Tracking and Carrier
-                            tracking = None
-                            carrier = None
-                            site_order_id = None
-                            body = "" # Initialize to avoid UnboundLocalError
-                            
-                            # Clean body and subject for extraction
-                            content_to_scan = f"{subject} {body[:2000]}"
-
-                            # 1. Extraction of Site Order ID (Amazon, Temu, eBay etc.) - PRIORITY
-                            amazon_match = re.search(r'(\d{3}-\d{7}-\d{7})', content_to_scan)
-                            temu_match = re.search(r'(PO-\d{3}-\d{15,20})', content_to_scan)
-                            ebay_match = re.search(r'(\d{2}-\d{5}-\d{5})', content_to_scan)
-                            
-                            if amazon_match:
-                                site_order_id = amazon_match.group(1)
-                                carrier = "Amazon"
-                            elif temu_match:
-                                site_order_id = temu_match.group(1)
-                                carrier = "Temu"
-                            elif ebay_match:
-                                site_order_id = ebay_match.group(1)
-                                carrier = "eBay"
-
-                            # 2. Tracking patterns (standard)
-                            tracking_patterns = [
-                                r'(1Z[A-Z0-9]{16})',  # UPS
-                                r'(\d{10,14})',       # FedEx/DHL/GLS
-                                r'(0034\d{16})',      # Poste Italiane
-                                r'([A-Z0-9]{10,25})'  # Generic alphanumeric (at the end)
-                            ]
-                            
-                            for pattern in tracking_patterns:
-                                if tracking: break
-                                matches = re.finditer(pattern, content_to_scan)
-                                for match in matches:
-                                    potential = match.group(1)
-                                    # Avoid "stealing" the numeric part of the already found site_order_id
-                                    if site_order_id and potential in site_order_id:
-                                        continue
-                                    # Very basic heuristic: if it's in the subject or near "tracking" keyword
-                                    if potential in subject or "tracking" in content_to_scan.lower():
-                                        tracking = potential
-                                        break
-                            
-                            # extraction of Status
-                            # ... (later in code) ...
-                            
-                            # We fetch RFC822 for body parsing
+                            # 1. Fetch full body (RFC822) to have all content for extraction
                             logger.info(f"EMAIL-SYNC: Analisi email: {subject}")
                             res, msg_data = mail.fetch(e_id, "(RFC822)")
                             if not msg_data or not msg_data[0]: continue
@@ -303,18 +300,85 @@ class EmailSyncManager:
                                     if part.get_content_type() in ["text/plain", "text/html"] and "attachment" not in str(part.get("Content-Disposition")):
                                         payload = part.get_payload(decode=True)
                                         charset = part.get_content_charset() or 'utf-8'
-                                        body = payload.decode(charset, errors='replace')
+                                        try:
+                                            body = payload.decode(charset, errors='replace')
+                                        except:
+                                            body = payload.decode('utf-8', errors='replace')
                                         break
                             else:
                                 payload = msg.get_payload(decode=True)
                                 charset = msg.get_content_charset() or 'utf-8'
-                                body = payload.decode(charset, errors='replace')
+                                try:
+                                    body = payload.decode(charset, errors='replace')
+                                except:
+                                    body = payload.decode('utf-8', errors='replace')
                             
                             # Clean HTML if present
                             body = re.sub('<[^<]+?>', '', body) # Simple tag removal
                             
                             body_lower = body.lower()
                             subject_lower = subject.lower()
+
+                            # --- extraction of Tracking and Carrier ---
+                            tracking = None
+                            carrier = None
+                            site_order_id = None
+                            
+                            # Clean body and subject for extraction
+                            content_to_scan = f"{subject} {body}"
+                            content_to_scan_lower = content_to_scan.lower()
+
+                            # Identification of carrier (preliminary)
+                            if any(kw in content_to_scan_lower for kw in ["too good to go", "to good to go", "tgtg"]):
+                                carrier = "Too Good To Go"
+                            elif "too good to go" in folder.lower() or "tgtg" in folder.lower():
+                                carrier = "Too Good To Go"
+                            elif any(kw in content_to_scan_lower for kw in ["amazon"]):
+                                carrier = "Amazon"
+                            elif any(kw in content_to_scan_lower for kw in ["temu"]):
+                                carrier = "Temu"
+                            elif any(kw in content_to_scan_lower for kw in ["ebay"]):
+                                carrier = "eBay"
+
+                            # 2. Extraction of Site Order ID (Amazon, Temu, eBay etc.)
+                            amazon_match = re.search(r'(\d{3}-\d{7}-\d{7})', content_to_scan)
+                            temu_match = re.search(r'(PO-\d{3}-\d{15,20})', content_to_scan)
+                            ebay_match = re.search(r'(\d{2}-\d{5}-\d{5})', content_to_scan)
+                            # Pattern TGTG: ID ordine, Prenotazione oppure il nuovo pattern "spedizione" seguito da codice (due punti opzionali, allow some words between)
+                            tgtg_match = re.search(r'(?:ID ordine|Order ID|ordine|prenotazione|spedizione|sacchetto):?.*?\b([a-z0-9]{8,15})\b', content_to_scan, re.IGNORECASE | re.DOTALL)
+                            
+                            if amazon_match:
+                                site_order_id = amazon_match.group(1)
+                                carrier = "Amazon"
+                            elif temu_match:
+                                site_order_id = temu_match.group(1)
+                                carrier = "Temu"
+                            elif ebay_match:
+                                site_order_id = ebay_match.group(1)
+                                carrier = "eBay"
+                            elif tgtg_match:
+                                site_order_id = tgtg_match.group(1)
+                                carrier = "Too Good To Go"
+
+                            # 3. Tracking patterns (standard)
+                            tracking_patterns = [
+                                r'(1Z[A-Z0-9]{16})',  # UPS
+                                r'(\d{10,14})',       # FedEx/DHL/GLS
+                                r'(0034\d{16})',      # Poste Italiane
+                                r'([A-Z0-9]{10,25})'  # Generic alphanumeric (at the end)
+                            ]
+                            
+                            for pattern in tracking_patterns:
+                                if tracking: break
+                                matches = re.finditer(pattern, content_to_scan)
+                                for match in matches:
+                                    potential = match.group(1)
+                                    if site_order_id and potential in site_order_id:
+                                        continue
+                                    # Very basic heuristic: if it's in the subject or near "tracking" or "spedizione" keyword
+                                    if potential in subject or any(kw in content_to_scan_lower for kw in ["tracking", "spedizione", "consuln"]):
+                                        tracking = potential
+                                        break
 
                             if not carrier:
                                 if any(kw in subject_lower or kw in body_lower for kw in ["too good to go", "to good to go"]):
@@ -336,10 +400,10 @@ class EmailSyncManager:
                             # 2. Identify if it's just a confirmation: if so, we don't want "Delivered" from body
                             is_confirmation = any(kw in subject_lower for kw in ["conferma", "ricevuto", "grazie", "thank you", "confirmed", "riepilogo"])
                             
-                            # 3. Body check (only if status not found in subject)
+                             # 3. Body check (only if status not found in subject)
                             if not status:
                                 # For Delivered: be more restrictive in body (avoid "will be delivered on...")
-                                if any(kw in body_lower for kw in ["consegna effettuata", "consegnato il", "stato consegnato", "delivered on"]):
+                                if any(kw in body_lower for kw in ["consegna effettuata", "consegnato il", "consegnata il", "stato consegnato", "stata consegnata", "delivered on"]):
                                     # Confirmation emails often say "will be delivered", so we only accept "delivered on" or similar
                                     if not is_confirmation:
                                         status = "Consegnato"
@@ -352,6 +416,16 @@ class EmailSyncManager:
                                 
                                 elif any(kw in body_lower for kw in ["spedito", "shipped", "invio", "dispatched", "sent", "in spedizione"]):
                                     status = "Spedito"
+                            
+                            # 4. Too Good To Go Specific Mapping
+                            if carrier == "Too Good To Go":
+                                if any(kw in subject_lower or kw in body_lower for kw in ["grazie per aver salvato", "ordine completato", "ritirato", "sacchetto salvato", "salvato del cibo", "consegnato", "consegnata"]):
+                                    status = "Consegnato"
+                                elif any(kw in subject_lower or kw in body_lower for kw in ["confermato", "prenotazione", "magico sacchetto", "non dimenticare", "ritiro", "preparato"]):
+                                    status = "In Transito"
+                                # If we found an Order ID but no clear status, TGTG usually means it's ready/booked
+                                if not status:
+                                    status = "In Transito"
                             
                             # Default status for confirmation emails if not found otherwise
                             if not status and is_confirmation:
@@ -409,22 +483,30 @@ class EmailSyncManager:
             # same site_order_id or tracking_number). They must all receive the same status.
             matched_orders = []
 
-            # 1. Match by tracking number (highest priority) — collect ALL matches
-            if update.get('tracking'):
-                for order in orders:
-                    current_tracking = (order.get('tracking_number') or "").strip()
-                    if current_tracking and current_tracking == update['tracking']:
-                        matched_orders.append(order)
-
-            # 2. Match by site_order_id — collect ALL matches not already found
+            # Match against database orders
+            matched_ids = set()
+            
+            # 1. Match by site_order_id (CASE-INSENSITIVE)
             if update.get('site_order_id'):
-                already_ids = {o['id'] for o in matched_orders}
+                u_id = update['site_order_id'].strip().lower()
                 for order in orders:
-                    if order['id'] in already_ids:
-                        continue
-                    current_site_id = (order.get('site_order_id') or "").strip()
-                    if current_site_id and current_site_id == update['site_order_id']:
+                    if order['id'] in matched_ids: continue
+                    o_sid = (order.get('site_order_id') or "").strip().lower()
+                    o_tr = (order.get('tracking_number') or "").strip().lower()
+                    if u_id == o_sid or u_id == o_tr:
                         matched_orders.append(order)
+                        matched_ids.add(order['id'])
+
+            # 2. Match by tracking (CASE-INSENSITIVE, always check)
+            if update.get('tracking'):
+                u_tr = update['tracking'].strip().lower()
+                for order in orders:
+                    if order['id'] in matched_ids: continue
+                    o_sid = (order.get('site_order_id') or "").strip().lower()
+                    o_tr = (order.get('tracking_number') or "").strip().lower()
+                    if u_tr == o_tr or u_tr == o_sid:
+                        matched_orders.append(order)
+                        matched_ids.add(order['id'])
 
             # 3. Fallback: match by description keywords (only if nothing found above)
             if not matched_orders:

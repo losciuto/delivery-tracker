@@ -446,11 +446,28 @@ class ImportFileDialog(QDialog):
         updated = 0
         skipped = 0
         
-        for row in selected_rows:
+        # Prepare progress dialog/overlay if many items
+        if len(selected_rows) > 5:
+            self.progress.setRange(0, len(selected_rows))
+            self.progress.setValue(0)
+            self.progress.show()
+            self.result_label.setText("Importazione e download immagini...")
+
+        for i, row in enumerate(selected_rows):
             if row >= len(self._parsed_orders):
                 continue
 
-            order = self._parsed_orders[row].copy() # Work on a copy
+            order = self._parsed_orders[row].copy()
+            
+            # Download image if URL exists
+            image_url = order.get('image_url')
+            if image_url and not order.get('image_blob'):
+                # Basic download here (ideally this should be in a thread, 
+                # but for simplicity in this dialog we do it sequentially 
+                # and maybe add a simple progress update)
+                blob = utils.ImageDownloader.download_image(image_url)
+                if blob:
+                    order['image_blob'] = blob
             
             # Ensure mandatory fields have defaults
             if not order.get('order_date'):
@@ -474,7 +491,6 @@ class ImportFileDialog(QDialog):
                     else:
                         skipped += 1
                     continue
-                # else: "new" -> falls through to add_order
 
             order_id = database.add_order(order)
             if order_id:
@@ -482,6 +498,12 @@ class ImportFileDialog(QDialog):
                 logger.info(f"FILE-IMPORT: Ordine importato ID {order_id}: {order.get('description', '')}")
             else:
                 skipped += 1
+            
+            if len(selected_rows) > 5:
+                self.progress.setValue(i + 1)
+                # Process events to keep UI marginally responsive
+                from PyQt6.QtWidgets import QApplication
+                QApplication.processEvents()
 
         # Summary message
         msg_parts = []

@@ -150,9 +150,9 @@ def add_order(order_data: Dict[str, Any]) -> Optional[int]:
     """Add a new order to database"""
     
     # Enforce sync between status text and is_delivered boolean
-    if order_data.get('status') == 'Consegnato':
+    if order_data.get('status') in ['Consegnato', 'Rimborsato', 'Annullato']:
         order_data['is_delivered'] = True
-    elif order_data.get('is_delivered'):
+    elif order_data.get('is_delivered') and order_data.get('status') not in ['Consegnato', 'Rimborsato', 'Annullato']:
         order_data['status'] = 'Consegnato'
         
     try:
@@ -285,9 +285,9 @@ def update_order(order_id: int, order_data: Dict[str, Any]) -> bool:
     """Update an existing order"""
     
     # Enforce sync between status text and is_delivered boolean
-    if order_data.get('status') == 'Consegnato':
+    if order_data.get('status') in ['Consegnato', 'Rimborsato', 'Annullato']:
         order_data['is_delivered'] = True
-    elif order_data.get('is_delivered'):
+    elif order_data.get('is_delivered') and order_data.get('status') not in ['Consegnato', 'Rimborsato', 'Annullato']:
         order_data['status'] = 'Consegnato'
         
     try:

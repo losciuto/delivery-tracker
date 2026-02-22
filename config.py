@@ -64,6 +64,8 @@ class ColorScheme:
     overdue: str
     due_today: str
     upcoming: str
+    refunded: str
+    cancelled: str
 
 # Light Theme
 LIGHT_THEME = ColorScheme(
@@ -87,7 +89,9 @@ LIGHT_THEME = ColorScheme(
     delivered="#C8E6C9",
     overdue="#FFCDD2",
     due_today="#FFE082",
-    upcoming="#FFF9C4"
+    upcoming="#FFF9C4",
+    refunded="#E1BEE7",
+    cancelled="#CFD8DC"
 )
 
 # Dark Theme
@@ -112,7 +116,9 @@ DARK_THEME = ColorScheme(
     delivered="#2E7D32",
     overdue="#C62828",
     due_today="#F57C00",
-    upcoming="#F9A825"
+    upcoming="#F9A825",
+    refunded="#4A148C",
+    cancelled="#37474F"
 )
 
 # Default settings
@@ -222,6 +228,8 @@ ORDER_STATUSES = [
     "In Transito",
     "In Consegna",
     "Consegnato",
+    "Rimborsato",
+    "Annullato",
     "Problema/Eccezione"
 ]
 

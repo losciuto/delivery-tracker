@@ -606,7 +606,12 @@ class MainWindow(QMainWindow):
                         item.setToolTip(text)
 
             # Color rows based on status
-            if order.get('is_delivered'):
+            status = order.get('status')
+            if status == 'Rimborsato':
+                color = QColor(colors.refunded)
+            elif status == 'Annullato':
+                color = QColor(colors.cancelled)
+            elif order.get('is_delivered'):
                 color = QColor(colors.delivered)
             elif order.get('estimated_delivery') and order.get('alarm_enabled'):
                 est_date = utils.DateHelper.parse_date(order['estimated_delivery'])

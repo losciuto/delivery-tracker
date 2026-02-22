@@ -308,6 +308,8 @@ class ImportFileDialog(QDialog):
         self.table.setRowCount(0)
         status_colors = {
             'Consegnato':         '#C8E6C9',
+            'Rimborsato':         '#E1BEE7', # Purple/Lavander
+            'Annullato':          '#CFD8DC', # Grey
             'In Consegna':        '#FFE0B2',
             'In Transito':        '#BBDEFB',
             'Spedito':            '#E3F2FD',

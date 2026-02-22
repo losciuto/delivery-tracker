@@ -8,7 +8,8 @@ from PyQt6.QtWidgets import (
     QLineEdit, QDateEdit, QCheckBox, QTextEdit, QMessageBox,
     QGroupBox, QFormLayout, QComboBox, QWidget, QFrame, QTabWidget
 )
-from PyQt6.QtCore import QDate, pyqtSignal
+from PyQt6.QtCore import QDate, pyqtSignal, Qt
+import base64
 
 import config
 from config import ORDER_STATUSES
@@ -389,25 +390,58 @@ class SettingsDialog(QDialog):
         layout.addWidget(notif_group)
         
         # Email settings
-        email_group = QGroupBox("Integrazione Email (Hotmail/Outlook)")
+        email_group = QGroupBox("Integrazione Email")
         email_layout = QFormLayout()
         
         self.email_sync_cb = QCheckBox()
         self.email_sync_cb.setChecked(self.settings.get('email_sync_enabled', False))
         email_layout.addRow("Abilita sincronizzazione:", self.email_sync_cb)
         
+        # Provider selection
+        self.provider_combo = QComboBox()
+        for display_name, internal_key in config.EMAIL_PROVIDERS.items():
+            self.provider_combo.addItem(display_name, internal_key)
+            
+        current_provider = self.settings.get('email_provider', 'microsoft')
+        index = self.provider_combo.findData(current_provider)
+        if index >= 0:
+            self.provider_combo.setCurrentIndex(index)
+            
+        self.provider_combo.currentIndexChanged.connect(self._toggle_email_fields)
+        email_layout.addRow("Provider Email:", self.provider_combo)
+        
         self.email_addr_input = QLineEdit()
         self.email_addr_input.setText(self.settings.get('email_address', ''))
-        self.email_addr_input.setPlaceholderText("esempio@hotmail.com")
-        self.email_addr_input.setToolTip("Inserisci l'email manualmente o usa il pulsante 'Connetti' per l'autorizzazione automatica")
-        email_layout.addRow("Account Collegato:", self.email_addr_input)
+        self.email_addr_input.setPlaceholderText("esempio@email.com")
+        self.email_addr_input.setToolTip("Inserisci l'indirizzo email che riceve le notifiche degli ordini")
+        email_layout.addRow("Indirizzo Email:", self.email_addr_input)
         
-        self.connect_btn = QPushButton("Connetti Account Microsoft")
+        # App Password (for Gmail)
+        self.app_password_input = QLineEdit()
+        self.app_password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.app_password_input.setPlaceholderText("Password per le App (16 caratteri)")
+        self.app_password_input.setToolTip("La Password per le App generata dal tuo account Google (non la tua password principale)")
+        
+        # Decode saved app password if present
+        saved_b64 = self.settings.get('email_app_password', '')
+        if saved_b64:
+            try:
+                decoded = base64.b64decode(saved_b64).decode('utf-8')
+                self.app_password_input.setText(decoded)
+            except Exception:
+                pass
+                
+        email_layout.addRow("App Password:", self.app_password_input)
+        
+        self.connect_btn = QPushButton("Connetti Account Microsoft (OAuth2)")
         self.connect_btn.clicked.connect(self.connect_microsoft_account)
         email_layout.addRow("", self.connect_btn)
         
         email_group.setLayout(email_layout)
         layout.addWidget(email_group)
+        
+        # Initial toggle based on default provider
+        self._toggle_email_fields()
         
         # Backup settings
         backup_group = QGroupBox("Backup")
@@ -439,6 +473,27 @@ class SettingsDialog(QDialog):
         layout.addLayout(btn_layout)
         
         self.setLayout(layout)
+        
+    def _toggle_email_fields(self):
+        """Show/hide fields based on selected provider"""
+        provider = self.provider_combo.currentData()
+        is_microsoft = (provider == 'microsoft')
+        
+        # Toggle Connect Button
+        self.connect_btn.setVisible(is_microsoft)
+        
+        # Toggle App Password
+        # We need to find the label widget associated with the app_password_input row
+        layout = self.app_password_input.parentWidget().layout()
+        if isinstance(layout, QFormLayout):
+            for row in range(layout.rowCount()):
+                field = layout.itemAt(row, QFormLayout.ItemRole.FieldRole).widget()
+                if field == self.app_password_input:
+                    label = layout.itemAt(row, QFormLayout.ItemRole.LabelRole).widget()
+                    if label:
+                        label.setVisible(not is_microsoft)
+                    self.app_password_input.setVisible(not is_microsoft)
+                    break
     
     def create_backup(self):
         """Create a backup now"""
@@ -457,6 +512,15 @@ class SettingsDialog(QDialog):
         # Email settings
         self.settings['email_sync_enabled'] = self.email_sync_cb.isChecked()
         self.settings['email_address'] = self.email_addr_input.text().strip()
+        provider = self.provider_combo.currentData()
+        self.settings['email_provider'] = provider
+        
+        # Save App Password (basic obfuscation so it's not plain text in config)
+        app_pw = self.app_password_input.text().strip()
+        if app_pw:
+            self.settings['email_app_password'] = base64.b64encode(app_pw.encode('utf-8')).decode('utf-8')
+        else:
+            self.settings['email_app_password'] = ''
         
         try:
             self.settings['notification_days_before'] = int(self.notif_days_input.text())

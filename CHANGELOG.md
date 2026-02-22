@@ -4,12 +4,14 @@ Tutte le modifiche importanti a questo progetto saranno documentate in questo fi
 
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/),
 e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/).
-## [2.6.0] - 2026-02-20
+## [2.6.0] - 2026-02-22
 ### ✨ Aggiunte
+- **Miniature Inline in Tabella**: Visualizzazione diretta delle immagini dei prodotti nelle righe della tabella degli ordini e nelle anteprime di importazione.
+- **Conversione Automatica Formati**: Supporto trasparente per immagini eBay (WebP) e altri formati moderni tramite conversione automatica in PNG compatibile con PyQt.
+- **MIME Type Detection**: Rilevamento intelligente del formato immagine per tooltips HTML più robusti.
 - **Ricerca Globale Ottimizzata**: Sistema di ricerca esteso a tutti i campi dell'ordine (Tracking, ID Ordine Sito, Destinazione, Vettore, ecc.).
 - **Persistenza Immagini (BLOB)**: Supporto per il download e la memorizzazione binaria delle immagini dei prodotti direttamente nel database.
-- **Thumbnail Tooltips**: Anteprima visiva istantanea (150px) al passaggio del mouse su qualsiasi cella della tabella degli ordini.
-- **Deep Scraping AliExpress**: Implementata l'estrazione automatizzata di dettagli avanzati (Venditore, Destinazione, Tracking e Consegna Stimata) tramite browser subagent.
+- **Deep Scraping eBay**: Implementata l'estrazione automatizzata di dettagli avanzati tramite browser subagent.
 
 ### 🔧 Ottimizzazioni
 - Migrazione automatica del database per l'aggiunta della colonna `image_blob`.

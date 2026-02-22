@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QStackedWidget, QMenu, QApplication, QProgressDialog
 )
 from PyQt6.QtCore import Qt, QSize, QTimer, QThread, pyqtSignal, QObject
-from PyQt6.QtGui import QColor, QBrush, QAction, QKeySequence, QShortcut
+from PyQt6.QtGui import QColor, QBrush, QAction, QKeySequence, QShortcut, QPixmap, QIcon
 
 import database
 import config
@@ -547,16 +547,35 @@ class MainWindow(QMainWindow):
             price_text = f"\u20ac {price:.2f}" if price is not None else ''
             self.table.setItem(row, 18, QTableWidgetItem(price_text))
 
-            # Immagine URL (col 19) — cliccabile come link
+            # Immagine URL (col 19) — cliccabile come link o thumbnail
             image_url = order.get('image_url', '')
-            image_item = QTableWidgetItem(image_url)
-            if image_url:
+            image_blob = order.get('image_blob')
+            image_item = QTableWidgetItem()
+            
+            if image_blob:
+                # Show thumbnail as icon if blob is available
+                pixmap = QPixmap()
+                pixmap.loadFromData(image_blob)
+                if not pixmap.isNull():
+                    thumbnail = pixmap.scaled(60, 60, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                    image_item.setIcon(QIcon(thumbnail))
+                    image_item.setText("") # Don't show URL text if we have the icon
+            elif image_url:
+                image_item.setText(image_url)
                 image_item.setForeground(QBrush(QColor("blue") if theme_name == 'light' else QColor("#64B5F6")))
                 font = image_item.font()
                 font.setUnderline(True)
                 image_item.setFont(font)
+            
+            if image_url:
                 image_item.setToolTip(f"🖼 Clicca per aprire l'immagine:\n{image_url}")
+            
             self.table.setItem(row, 19, image_item)
+            # Make row taller if we have images
+            if image_blob:
+                self.table.setRowHeight(row, 65)
+            else:
+                self.table.setRowHeight(row, 30) # Default height
 
             # Add tooltips with image preview
             # Use BLOB images for speed/offline access, fallback to URL

@@ -148,6 +148,13 @@ def init_db():
 
 def add_order(order_data: Dict[str, Any]) -> Optional[int]:
     """Add a new order to database"""
+    
+    # Enforce sync between status text and is_delivered boolean
+    if order_data.get('status') == 'Consegnato':
+        order_data['is_delivered'] = True
+    elif order_data.get('is_delivered'):
+        order_data['status'] = 'Consegnato'
+        
     try:
         with db_cursor() as cursor:
             cursor.execute('''
@@ -200,15 +207,16 @@ def get_orders(include_delivered: bool = True, search: str = '',
     delivery_mode can be: 'all', 'pending', 'delivered', 'overdue'
     """
     try:
-        # We use get_db_connection directly for reads to avoid transaction overhead of context manager
-        # or we could implement a read-only context manager. 
-        # For simplicity/consistency, let's use standard connection for reads.
         conn = get_db_connection()
         try:
             query = 'SELECT * FROM orders WHERE 1=1'
             params = []
             
-            if not include_delivered:
+            # If we explicitly want ONLY delivered items, ignore the global include_delivered preference
+            if delivery_mode == 'delivered':
+                query += ' AND is_delivered = 1'
+            elif not include_delivered:
+                # For 'all' or 'pending' or 'overdue' modes, respect the global setting
                 query += ' AND is_delivered = 0'
             
             if search:
@@ -236,15 +244,14 @@ def get_orders(include_delivered: bool = True, search: str = '',
             cursor = conn.execute(query, params)
             orders = [dict(row) for row in cursor.fetchall()]
             
-            # Filter by delivery_mode
+            # Filter by delivery_mode (SQL already handled 'delivered' and global exclusion)
             if delivery_mode == 'pending':
                 orders = [o for o in orders if not o['is_delivered']]
-            elif delivery_mode == 'delivered':
-                orders = [o for o in orders if o['is_delivered']]
             elif delivery_mode == 'overdue':
                 # Re-calculate overdue status since it's date-dependent
                 filtered = []
                 for o in orders:
+                    # Ignore delivered in overdue check
                     if not o['is_delivered'] and o.get('estimated_delivery'):
                         est_date = utils.DateHelper.parse_date(o['estimated_delivery'])
                         if est_date and utils.DateHelper.get_date_status(est_date) == 'overdue':
@@ -276,6 +283,13 @@ def get_order_by_id(order_id: int) -> Optional[Dict[str, Any]]:
 
 def update_order(order_id: int, order_data: Dict[str, Any]) -> bool:
     """Update an existing order"""
+    
+    # Enforce sync between status text and is_delivered boolean
+    if order_data.get('status') == 'Consegnato':
+        order_data['is_delivered'] = True
+    elif order_data.get('is_delivered'):
+        order_data['status'] = 'Consegnato'
+        
     try:
         with db_cursor() as cursor:
             cursor.execute('''
@@ -371,10 +385,25 @@ def merge_order_data(order_id: int, new_data: Dict[str, Any]) -> bool:
                     merged_data[field] = new_val
                     changes_made = True
 
-        # Special case: Status
+        # Special case: Status and is_delivered sync
         new_status = new_data.get('status')
-        if new_status and new_status != 'In Attesa' and existing.get('status') == 'In Attesa':
-            merged_data['status'] = new_status
+        new_is_delivered = new_data.get('is_delivered')
+        
+        if new_status and new_status != existing.get('status'):
+            if new_status != 'In Attesa' or existing.get('status') == 'In Attesa':
+                merged_data['status'] = new_status
+                changes_made = True
+                
+        if new_is_delivered is not None and new_is_delivered != existing.get('is_delivered'):
+            merged_data['is_delivered'] = new_is_delivered
+            changes_made = True
+            
+        # Enforce consistency
+        if merged_data.get('status') == 'Consegnato' and not merged_data.get('is_delivered'):
+            merged_data['is_delivered'] = True
+            changes_made = True
+        elif merged_data.get('is_delivered') and merged_data.get('status') != 'Consegnato':
+            merged_data['status'] = 'Consegnato'
             changes_made = True
 
         # Special case: Quantity
@@ -420,11 +449,12 @@ def delete_order(order_id: int) -> bool:
 
 def mark_as_delivered(order_id: int, delivered: bool = True) -> bool:
     """Mark an order as delivered or not delivered"""
+    status = 'Consegnato' if delivered else 'In Attesa'
     try:
         with db_cursor() as cursor:
             cursor.execute(
-                'UPDATE orders SET is_delivered = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-                (delivered, order_id)
+                'UPDATE orders SET is_delivered = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                (delivered, status, order_id)
             )
             logger.info(f"Order {order_id} marked as {'delivered' if delivered else 'not delivered'}")
             return True

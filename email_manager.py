@@ -16,8 +16,13 @@ from datetime import datetime, date, timedelta
 logger = utils.get_logger(__name__)
 
 # Email Server Settings (Outlook/Office365/Hotmail)
-IMAP_SERVER = "outlook.office365.com"
-IMAP_PORT = 993
+MICROSOFT_IMAP_SERVER = "outlook.office365.com"
+MICROSOFT_IMAP_PORT = 993
+
+# Email Server Settings (Gmail)
+GOOGLE_IMAP_SERVER = "imap.gmail.com"
+GOOGLE_IMAP_PORT = 993
+
 IMAP_TIMEOUT = 30 # secondi
 
 # OAuth2 Settings
@@ -53,6 +58,17 @@ class EmailSyncManager:
         self.settings = utils.Settings.load()
         self.email_addr = self.settings.get('email_address', '')
         self.enabled = self.settings.get('email_sync_enabled', False)
+        self.provider = self.settings.get('email_provider', 'microsoft')
+        
+        # Decode app password if present
+        self.app_password = ""
+        saved_b64 = self.settings.get('email_app_password', '')
+        if saved_b64:
+            try:
+                self.app_password = base64.b64decode(saved_b64).decode('utf-8')
+            except Exception:
+                pass
+                
         self.token_cache = msal.SerializableTokenCache()
         
         # Load cache if exists
@@ -83,35 +99,62 @@ class EmailSyncManager:
         return None
 
     def connect(self) -> Optional[imaplib.IMAP4_SSL]:
-        """Connect and login to IMAP server with modern auth (XOAUTH2)"""
+        """Connect and login to IMAP server with appropriate auth method"""
         if not self.email_addr:
             logger.warning("EMAIL-SYNC: Indirizzo email non configurato.")
             return None
             
-        token = self.get_access_token()
-        if not token:
-            logger.error("EMAIL-SYNC: Token non disponibile. Necessaria nuova autorizzazione.")
-            raise Exception("Account Microsoft non autorizzato. Vai nelle impostazioni per connetterlo.")
+        if self.provider == 'google':
+            if not self.app_password:
+                logger.error("EMAIL-SYNC: Password per le App non configurata per Gmail.")
+                raise Exception("Devi inserire una Password per le App valida nelle Impostazioni per usare Gmail.")
             
-        try:
-            logger.info(f"OAUTH2: Inizializzazione connessione SSL a {IMAP_SERVER}...")
-            mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT, timeout=IMAP_TIMEOUT)
-            
-            # Generate XOAUTH2 string
-            auth_string = f"user={self.email_addr}\1auth=Bearer {token}\1\1"
-            
-            logger.info("OAUTH2: Invio comando AUTHENTICATE XOAUTH2...")
-            status, resp = mail.authenticate('XOAUTH2', lambda x: auth_string)
-            
-            if status != 'OK':
-                logger.error(f"OAUTH2: Autenticazione fallita: {resp}")
-                raise Exception(f"Errore OAuth2: {resp}")
+            try:
+                logger.info(f"IMAP: Inizializzazione connessione SSL a {GOOGLE_IMAP_SERVER}...")
+                mail = imaplib.IMAP4_SSL(GOOGLE_IMAP_SERVER, GOOGLE_IMAP_PORT, timeout=IMAP_TIMEOUT)
                 
-            logger.info("OAUTH2: Autenticazione completata con successo.")
-            return mail
-        except Exception as e:
-            logger.error(f"OAUTH2: Errore durante la connessione: {e}")
-            raise e
+                logger.info("IMAP: Accesso standard tramite Password per le App...")
+                # Standard IMAP login
+                status, resp = mail.login(self.email_addr, self.app_password)
+                if status != 'OK':
+                    logger.error(f"IMAP: Login Gmail fallito: {resp}")
+                    raise Exception(f"Errore Login: {resp}")
+                
+                logger.info("IMAP: Accesso Gmail completato con successo.")
+                return mail
+            except imaplib.IMAP4.error as e:
+                logger.error(f"IMAP: Errore di autenticazione Gmail (password errata o blocco sicurezza): {e}")
+                raise Exception("Credenziali Gmail non valide. Verifica la Password per le App e assicurati che non abbia spazi.")
+            except Exception as e:
+                logger.error(f"IMAP: Errore durante la connessione Gmail: {e}")
+                raise e
+                
+        else:
+            # Default Microsoft OAuth2
+            token = self.get_access_token()
+            if not token:
+                logger.error("EMAIL-SYNC: Token non disponibile. Necessaria nuova autorizzazione.")
+                raise Exception("Account Microsoft non autorizzato. Vai nelle impostazioni per connetterlo.")
+                
+            try:
+                logger.info(f"OAUTH2: Inizializzazione connessione SSL a {MICROSOFT_IMAP_SERVER}...")
+                mail = imaplib.IMAP4_SSL(MICROSOFT_IMAP_SERVER, MICROSOFT_IMAP_PORT, timeout=IMAP_TIMEOUT)
+                
+                # Generate XOAUTH2 string
+                auth_string = f"user={self.email_addr}\1auth=Bearer {token}\1\1"
+                
+                logger.info("OAUTH2: Invio comando AUTHENTICATE XOAUTH2...")
+                status, resp = mail.authenticate('XOAUTH2', lambda x: auth_string)
+                
+                if status != 'OK':
+                    logger.error(f"OAUTH2: Autenticazione fallita: {resp}")
+                    raise Exception(f"Errore OAuth2: {resp}")
+                    
+                logger.info("OAUTH2: Autenticazione completata con successo.")
+                return mail
+            except Exception as e:
+                logger.error(f"OAUTH2: Errore durante la connessione: {e}")
+                raise e
 
     def fetch_updates(self) -> List[Dict[str, Any]]:
         """Fetch and parse recent delivery emails from multiple relevant folders"""
@@ -220,7 +263,7 @@ class EmailSyncManager:
             # IMPORTANT: IMAP requires English month names (Jan, Feb, ...).
             # strftime("%b") is locale-dependent and might fail on non-English systems.
             months_en = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-            d_target = date.today() - timedelta(days=60)
+            d_target = date.today() - timedelta(days=30) # Reduced from 60 to 30 for performance
             since_date = f"{d_target.day:02d}-{months_en[d_target.month-1]}-{d_target.year}"
             
             logger.info(f"EMAIL-SYNC: Data di inizio scansione (IMAP format): {since_date}")
@@ -257,41 +300,77 @@ class EmailSyncManager:
                     email_ids = messages[0].split()
                     logger.info(f"EMAIL-SYNC: Trovate {len(email_ids)} email recenti in {folder}")
                     
-                    # Process those emails
-                    for e_id in email_ids:
+                    # Process those emails in chunks to drastically reduce network roundtrips for headers
+                    chunk_size = 100
+                    relevant_emails_data = [] # List of tuples: (e_id, subject, date)
+                    
+                    for i in range(0, len(email_ids), chunk_size):
+                        chunk_ids = email_ids[i:i + chunk_size]
+                        chunk_str = b",".join(chunk_ids)
+                        
                         try:
-                            # Fetch headers first to check subject/relevance
-                            res, head_data = mail.fetch(e_id, "(BODY[HEADER.FIELDS (SUBJECT DATE)])")
-                            if not head_data or not head_data[0]: continue
-                            
-                            header_text = head_data[0][1].decode(errors='replace')
-                            subject_match = re.search(r'Subject: (.*)', header_text, re.IGNORECASE)
-                            subject = subject_match.group(1).strip() if subject_match else ""
-                            
-                            # Decode subject
-                            try:
-                                decoded_parts = decode_header(subject)
-                                subject = ""
-                                for part, enc in decoded_parts:
-                                    if isinstance(part, bytes):
-                                        subject += part.decode(enc or 'utf-8', errors='replace')
-                                    else:
-                                        subject += part
-                            except: pass
-
-                            # Python-side filtering: Check if subject is relevant
-                            # Or if folder is already specialized
-                            is_relevant = any(kw in subject.lower() for kw in all_keywords)
-                            if not is_relevant and not ("too good to go" in folder.lower() or "tgtg" in folder.lower()):
+                            # Fetch headers for the whole chunk at once (BODY.PEEK prevents marking as read)
+                            res, headers_data = mail.fetch(chunk_str, "(BODY.PEEK[HEADER.FIELDS (SUBJECT DATE)])")
+                            if res != "OK" or not headers_data:
                                 continue
+                                
+                            for response_part in headers_data:
+                                if isinstance(response_part, tuple):
+                                    msg_info = response_part[0].decode(errors='ignore')
+                                    # Extract ID from response (e.g. "123 (BODY.PEEK...")
+                                    e_id_match = re.search(r'^(\d+)', msg_info)
+                                    if not e_id_match: continue
+                                    e_id = e_id_match.group(1).encode()
+                                    
+                                    header_text = response_part[1].decode(errors='replace')
+                                    
+                                    # Extract Subject
+                                    subject_match = re.search(r'Subject:\s*(.*?)(?:\r\n[^\s]|\Z)', header_text, re.IGNORECASE | re.DOTALL)
+                                    subject_raw = subject_match.group(1).strip() if subject_match else ""
+                                    
+                                    # Extract Date
+                                    date_match = re.search(r'Date:\s*(.*?)(?:\r\n[^\s]|\Z)', header_text, re.IGNORECASE)
+                                    email_date = date_match.group(1).strip() if date_match else ""
+                                    
+                                    # Decode subject
+                                    subject = ""
+                                    try:
+                                        decoded_parts = decode_header(subject_raw)
+                                        for part, enc in decoded_parts:
+                                            if isinstance(part, bytes):
+                                                subject += part.decode(enc or 'utf-8', errors='replace')
+                                            else:
+                                                subject += part
+                                    except:
+                                        subject = subject_raw.replace('\r\n', '').replace('\n', '')
+                                    
+                                    subject = " ".join(subject.split()) # clear newlines
 
+                                    # Python-side filtering: Check if subject is relevant
+                                    is_relevant = any(kw in subject.lower() for kw in all_keywords)
+                                    if not is_relevant and not ("too good to go" in folder.lower() or "tgtg" in folder.lower()):
+                                        continue
+                                        
+                                    relevant_emails_data.append((e_id, subject, email_date))
+                        except Exception as chunk_err:
+                            logger.error(f"EMAIL-SYNC: Errore nel fetching batch degli header in {folder}: {chunk_err}")
+                            continue
+
+                    logger.info(f"EMAIL-SYNC: Di {len(email_ids)} totali, {len(relevant_emails_data)} sono rilevanti dai filtri dell'oggetto.")
+
+                    # Fetch full body only for relevant emails
+                    for e_id, subject, email_date in relevant_emails_data:
+                        try:
                             # 1. Fetch full body (RFC822) to have all content for extraction
-                            logger.info(f"EMAIL-SYNC: Analisi email: {subject}")
+                            logger.info(f"EMAIL-SYNC: Analisi body completo per email: {subject[:50]}...")
                             res, msg_data = mail.fetch(e_id, "(RFC822)")
                             if not msg_data or not msg_data[0]: continue
                             
                             raw_email = msg_data[0][1]
                             msg = email.message_from_bytes(raw_email)
+                            
+                            # Inherit Date if not correctly parsed from RFC822 top-level
+                            final_date = msg.get("Date") or email_date
                             
                             # Get body
                             body = ""
@@ -442,7 +521,7 @@ class EmailSyncManager:
                                 'last_mile_carrier': None,
                                 'site_order_id': site_order_id,
                                 'status': status,
-                                'received_at': msg["Date"],
+                                'received_at': final_date,
                                 'body_snippet': body[:1000],
                                 'folder': folder
                             })

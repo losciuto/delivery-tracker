@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QGroupBox, QProgressBar, QLineEdit, QFrame
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QObject
-from PyQt6.QtGui import QColor, QBrush, QFont
+from PyQt6.QtGui import QColor, QBrush, QFont, QPixmap, QIcon
 
 import database
 import utils
@@ -349,7 +349,29 @@ class ImportFileDialog(QDialog):
             self.table.setItem(row, 6, status_item)
 
             self.table.setItem(row, 7, QTableWidgetItem(str(order.get('estimated_delivery', ''))))
-            self.table.setItem(row, 8, QTableWidgetItem(str(order.get('image_url', ''))))
+            
+            # Image thumbnail/URL preview
+            image_url = str(order.get('image_url', ''))
+            image_blob = order.get('image_blob')
+            img_item = QTableWidgetItem()
+            
+            if image_blob:
+                pixmap = QPixmap()
+                pixmap.loadFromData(image_blob)
+                if not pixmap.isNull():
+                    img_item.setIcon(QIcon(pixmap.scaled(60, 60, Qt.AspectRatioMode.KeepAspectRatio)))
+            elif image_url:
+                img_item.setText(image_url)
+                img_item.setForeground(QBrush(QColor("blue")))
+            
+            if image_url:
+                # Add tooltip with preview (base64 if possible, fallback to URL)
+                tooltip_src = utils.ImageDownloader.to_base64(image_blob) if image_blob else image_url
+                img_item.setToolTip(f"<html><img src='{tooltip_src}' width='150' height='150'></html>")
+                
+            self.table.setItem(row, 8, img_item)
+            if image_blob or image_url:
+                self.table.setRowHeight(row, 65)
 
             # Highlight duplicates
             if is_dup:

@@ -10,6 +10,8 @@ from datetime import datetime, date, timedelta
 from typing import Optional, Dict, Any, List
 import base64
 import requests
+import io
+from PIL import Image
 from pathlib import Path
 import config
 
@@ -705,7 +707,7 @@ class ImageDownloader:
     
     @staticmethod
     def download_image(url: str) -> Optional[bytes]:
-        """Download image from URL and return as bytes"""
+        """Download image from URL and return as bytes. Converts unsupported formats to PNG."""
         if not url:
             return None
         
@@ -728,21 +730,52 @@ class ImageDownloader:
             if 'image' not in content_type and not url.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
                 logger.warning(f"URL might not be an image: {url} (Content-Type: {content_type})")
             
-            return response.content
+            # Process image to ensure format is supported by PyQt (PNG/JPEG/GIF)
+            image_data = response.content
+            try:
+                img = Image.open(io.BytesIO(image_data))
+                if img.format not in ['JPEG', 'PNG', 'GIF', 'BMP']:
+                    logger.info(f"Converting image from {img.format} to PNG to support PyQt rendering.")
+                    if img.mode in ("RGBA", "P"):
+                        img = img.convert("RGBA")
+                    else:
+                        img = img.convert("RGB")
+                    
+                    output = io.BytesIO()
+                    img.save(output, format="PNG")
+                    image_data = output.getvalue()
+            except Exception as e:
+                logger.warning(f"Pillow could not process the image, returning raw bytes: {e}")
+
+            return image_data
         except Exception as e:
             logger.error(f"Error downloading image from {url}: {e}")
             return None
 
     @staticmethod
     def to_base64(image_data: bytes) -> Optional[str]:
-        """Convert binary image data to base64 string for HTML use"""
+        """Convert binary image data to base64 string for HTML use. Detects MIME type."""
         if not image_data:
             return None
         try:
+            # Try to detect format using Pillow for correct MIME type
+            mime_type = "image/png" # Default
+            try:
+                img = Image.open(io.BytesIO(image_data))
+                if img.format == 'JPEG':
+                    mime_type = "image/jpeg"
+                elif img.format == 'GIF':
+                    mime_type = "image/gif"
+                elif img.format == 'WEBP':
+                    mime_type = "image/webp"
+                elif img.format == 'PNG':
+                    mime_type = "image/png"
+            except Exception:
+                # Fallback to PNG if Pillow fails (common for some raw blobs)
+                pass
+
             encoded = base64.b64encode(image_data).decode('utf-8')
-            # We don't know the exact mime type here, so we use a generic placeholder or try to infer
-            # JPEG/PNG are safest defaults for web.
-            return f"data:image/png;base64,{encoded}"
+            return f"data:{mime_type};base64,{encoded}"
         except Exception as e:
             logger.error(f"Error encoding image to base64: {e}")
             return None

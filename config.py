@@ -8,7 +8,7 @@ from enum import Enum
 
 # Application Info
 APP_NAME = "Scadenziario Consegne"
-APP_VERSION = "2.5.1"
+APP_VERSION = "2.6.0"
 APP_AUTHOR = "Massimo Lo Sciuto"
 APP_SUPPORT = "Antigravity"
 APP_DEVELOPER = "Gemini 3 Pro"
@@ -126,7 +126,8 @@ DEFAULT_SETTINGS = {
     'language': 'it',
     'date_format': '%d/%m/%Y',
     'show_delivered': True,
-    'auto_refresh_minutes': 5
+    'auto_refresh_minutes': 5,
+    'email_provider': 'microsoft'
 }
 
 # Export formats
@@ -134,6 +135,12 @@ EXPORT_FORMATS = {
     'CSV': '.csv',
     'Excel': '.xlsx',
     'JSON': '.json'
+}
+
+# Supported Email Providers (Display Name -> Internal Key)
+EMAIL_PROVIDERS = {
+    "Microsoft (Outlook/Hotmail)": "microsoft",
+    "Google (Gmail)": "google"
 }
 
 # Platforms (predefined suggestions) - Expanded list

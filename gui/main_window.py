@@ -501,14 +501,21 @@ class MainWindow(QMainWindow):
 
             status_item = QTableWidgetItem(order.get('status', 'In Attesa'))
             # Format status color based on text
-            if order.get('status') == 'Consegnato':
-                status_item.setForeground(QBrush(QColor("green")))
-            elif order.get('status') == 'Spedito' or order.get('status') == 'In Transito':
-                status_item.setForeground(QBrush(QColor("#2196F3")))
-            elif order.get('status') == 'In Consegna':
-                status_item.setForeground(QBrush(QColor("#FF9800")))
-            elif order.get('status') == 'Problema/Eccezione':
-                status_item.setForeground(QBrush(QColor("red")))
+            status_text = order.get('status', 'In Attesa')
+            if status_text == 'Consegnato':
+                status_item.setForeground(QBrush(QColor("green") if theme_name == 'light' else QColor("#81C784")))
+            elif status_text in ['Spedito', 'In Transito']:
+                status_item.setForeground(QBrush(QColor("#2196F3") if theme_name == 'light' else QColor("#64B5F6")))
+            elif status_text == 'In Consegna':
+                status_item.setForeground(QBrush(QColor("#FF9800") if theme_name == 'light' else QColor("#FFB74D")))
+            elif status_text == 'Problema/Eccezione':
+                status_item.setForeground(QBrush(QColor("red") if theme_name == 'light' else QColor("#EF5350")))
+            elif status_text == 'Rimborsato':
+                status_item.setForeground(QBrush(QColor("#9C27B0") if theme_name == 'light' else QColor("#BA68C8")))
+            elif status_text == 'Annullato':
+                status_item.setForeground(QBrush(QColor("#757575") if theme_name == 'light' else QColor("#9E9E9E")))
+            elif status_text == 'In Attesa':
+                status_item.setForeground(QBrush(QColor("#607D8B") if theme_name == 'light' else QColor("#90A4AE")))
 
             self.table.setItem(row, 7, status_item)
 
@@ -649,8 +656,13 @@ class MainWindow(QMainWindow):
                     item = self.table.item(row, col)
                     if item:
                         item.setBackground(color)
-                        # Ensure text is readable on colored background
-                        item.setForeground(QBrush(QColor("black") if theme_name == 'light' else QColor("white")))
+                        # Ensure text is readable on colored background, but keep status/link colors
+                        # For terminal status rows (usually light backgrounds), black is best
+                        if col not in [7, 19]: # Status and Image/Link might have their own colors
+                            item.setForeground(QBrush(QColor("black") if theme_name == 'light' else QColor("white")))
+                        elif col == 7:
+                            # Re-apply status color logic if needed or just let it be
+                            pass
 
             # Save original background color as data for easy restoration
             for col in range(20):

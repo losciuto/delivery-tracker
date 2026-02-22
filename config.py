@@ -248,3 +248,6 @@ ORDER_STATUSES = [
     "Problema/Eccezione"
 ]
 
+def get_colors(theme_name: str) -> ColorScheme:
+    """Get color scheme by theme name"""
+    return LIGHT_THEME if theme_name == 'light' else DARK_THEME

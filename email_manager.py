@@ -38,6 +38,8 @@ STATUS_HIERARCHY = {
     'In Transito':        3,
     'In Consegna':        4,
     'Consegnato':         5,
+    'Rimborsato':         5,
+    'Annullato':          5,
 }
 
 

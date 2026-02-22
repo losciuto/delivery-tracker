@@ -306,15 +306,19 @@ class ImportFileDialog(QDialog):
 
     def _populate_table(self, orders: list):
         self.table.setRowCount(0)
+        settings = utils.Settings.load()
+        theme_name = settings.get('theme', 'light')
+        colors = config.get_colors(theme_name)
+        
         status_colors = {
-            'Consegnato':         '#C8E6C9',
-            'Rimborsato':         '#E1BEE7', # Purple/Lavander
-            'Annullato':          '#CFD8DC', # Grey
-            'In Consegna':        '#FFE0B2',
-            'In Transito':        '#BBDEFB',
-            'Spedito':            '#E3F2FD',
-            'Problema/Eccezione': '#FFCDD2',
-            'In Attesa':          '#F5F5F5',
+            'Consegnato':         colors.delivered,
+            'Rimborsato':         colors.refunded,
+            'Annullato':          colors.cancelled,
+            'In Consegna':        colors.out_for_delivery,
+            'In Transito':        colors.in_transit,
+            'Spedito':            colors.shipped,
+            'Problema/Eccezione': colors.problem,
+            'In Attesa':          colors.pending,
         }
 
         self._duplicate_map = self._find_duplicates(orders)
@@ -378,7 +382,7 @@ class ImportFileDialog(QDialog):
             # Highlight duplicates
             if is_dup:
                 existing = self._duplicate_map[row]
-                dup_color = QColor('#FFF3E0')
+                dup_color = QColor('#FFF3E0') if theme_name == 'light' else QColor('#4E342E')
                 sim_pct = order.get('_dup_similarity', 0.0) * 100
                 tooltip = (
                     f"⚠️ Già presente in DB (ID {existing['id']}):\n"
@@ -392,6 +396,8 @@ class ImportFileDialog(QDialog):
                     item = self.table.item(row, col)
                     if item:
                         item.setBackground(QBrush(dup_color))
+                        # Ensure text readability on theme
+                        item.setForeground(QBrush(QColor("black") if theme_name == 'light' else QColor("white")))
                         item.setToolTip(tooltip)
             else:
                 desc_item = self.table.item(row, 3)

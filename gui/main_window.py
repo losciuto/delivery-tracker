@@ -606,29 +606,43 @@ class MainWindow(QMainWindow):
                         item.setToolTip(text)
 
             # Color rows based on status
-            status = order.get('status')
-            if status == 'Rimborsato':
+            status_text = order.get('status', 'In Attesa')
+            color = None
+            
+            # 1. Terminal states (Final)
+            if status_text == 'Rimborsato':
                 color = QColor(colors.refunded)
-            elif status == 'Annullato':
+            elif status_text == 'Annullato':
                 color = QColor(colors.cancelled)
-            elif order.get('is_delivered'):
+            elif order.get('is_delivered') or status_text == 'Consegnato':
                 color = QColor(colors.delivered)
-            elif order.get('estimated_delivery') and order.get('alarm_enabled'):
+            
+            # 2. Critical status
+            elif status_text == 'Problema/Eccezione':
+                color = QColor(colors.problem)
+            
+            # 3. Date-based alerts (overrides intermediate status colors for attention)
+            if color is None and order.get('estimated_delivery') and order.get('alarm_enabled'):
                 est_date = utils.DateHelper.parse_date(order['estimated_delivery'])
                 if est_date:
-                    status = utils.DateHelper.get_date_status(est_date)
-                    if status == 'overdue':
+                    date_status = utils.DateHelper.get_date_status(est_date)
+                    if date_status == 'overdue':
                         color = QColor(colors.overdue)
-                    elif status == 'due_today':
+                    elif date_status == 'due_today':
                         color = QColor(colors.due_today)
-                    elif status == 'upcoming':
+                    elif date_status == 'upcoming':
                         color = QColor(colors.upcoming)
-                    else:
-                        color = None
-                else:
-                    color = None
-            else:
-                color = None
+
+            # 4. Fallback to intermediate status colors
+            if color is None:
+                if status_text == 'In Consegna':
+                    color = QColor(colors.out_for_delivery)
+                elif status_text == 'In Transito':
+                    color = QColor(colors.in_transit)
+                elif status_text == 'Spedito':
+                    color = QColor(colors.shipped)
+                elif status_text == 'In Attesa':
+                    color = QColor(colors.pending)
             
             if color:
                 for col in range(20):

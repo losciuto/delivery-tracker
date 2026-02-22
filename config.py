@@ -66,6 +66,11 @@ class ColorScheme:
     upcoming: str
     refunded: str
     cancelled: str
+    in_transit: str
+    shipped: str
+    out_for_delivery: str
+    problem: str
+    pending: str
 
 # Light Theme
 LIGHT_THEME = ColorScheme(
@@ -91,7 +96,12 @@ LIGHT_THEME = ColorScheme(
     due_today="#FFE082",
     upcoming="#FFF9C4",
     refunded="#E1BEE7",
-    cancelled="#CFD8DC"
+    cancelled="#CFD8DC",
+    in_transit="#BBDEFB",
+    shipped="#E3F2FD",
+    out_for_delivery="#FFE0B2",
+    problem="#FFCDD2",
+    pending="#F5F5F5"
 )
 
 # Dark Theme
@@ -118,7 +128,12 @@ DARK_THEME = ColorScheme(
     due_today="#F57C00",
     upcoming="#F9A825",
     refunded="#4A148C",
-    cancelled="#37474F"
+    cancelled="#37474F",
+    in_transit="#1976D2",
+    shipped="#1565C0",
+    out_for_delivery="#E65100",
+    problem="#B71C1C",
+    pending="#424242"
 )
 
 # Default settings

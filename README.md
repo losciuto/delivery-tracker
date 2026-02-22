@@ -75,6 +75,18 @@ Un'applicazione desktop moderna e completa in Python per gestire le scadenze del
 - **Ricerca Globale**: Trova ordini per Numero di Tracking, ID Sito o Destinazione istantaneamente.
 - **Preview Immagini**: Tooltip con miniature (150px) ricavate dal database locale al passaggio del mouse su qualsiasi cella.
 
+## 🛍️ Piattaforme Supportate
+
+L'applicazione include parser avanzati e workflow ottimizzati per le seguenti piattaforme principali:
+- ✅ **Amazon** (Estrazione automatica e parsing date intelligente)
+- ✅ **AliExpress** (Deep Scraping di tracking, venditore e date)
+- ✅ **eBay** (Workflow di importazione assistito)
+- ✅ **Temu** (Workflow di importazione assistito)
+
+> [!IMPORTANT]
+> Hai bisogno di supporto per un'altra piattaforma (es. Vinted, Shein, Zalando, ecc.)? 
+> **[Apri una Issue su GitHub](https://github.com/losciuto/delivery-tracker/issues/new)** per farne esplicita richiesta! Svilupperemo nuovi parser in base ai suggerimenti della community.
+
 ## 📥 Installazione Rapida (Linux)
 
 Il modo più semplice per configurare tutto è usare lo script di setup automatizzato:

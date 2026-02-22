@@ -94,6 +94,18 @@ Features
 - **Global Search**: Find orders by Tracking Number, Site ID, or Destination instantly.
 - **Image Previews**: Tooltips with thumbnails (150px) sourced from the local database when hovering over any cell.
 
+## 🛍️ Supported Platforms
+
+The application includes advanced parsers and optimized workflows for the following main platforms:
+- ✅ **Amazon** (Automatic extraction and smart date parsing)
+- ✅ **AliExpress** (Deep Scraping of tracking, vendor, and dates)
+- ✅ **eBay** (Assisted import workflow)
+- ✅ **Temu** (Assisted import workflow)
+
+> [!IMPORTANT]
+> Do you need support for another platform (e.g., Vinted, Shein, Zalando, etc.)? 
+> **[Open an Issue on GitHub](https://github.com/losciuto/delivery-tracker/issues/new)** to make a specific request! We will develop new parsers based on community feedback.
+
 ## 📥 Quick Installation (Linux)
 
 The easiest way to set everything up is using the automated setup script:

@@ -1,25 +1,29 @@
-# Istruzioni Agent - Delivery Tracker
+# 🚀 PROTOCOLLO AGENT - Delivery Tracker
 
-## Lingua di Comunicazione
-- **IMPORTANTE**: Comunica SEMPRE in **italiano** con l'utente.
-  > [!NOTE]
-  > **IT**: La lingua da utilizzare va modificata in funzione della propria.  
-  > **EN**: The language to be used should be modified according to your own.
-- Mantieni un tono professionale e collaborativo.
+> [!CAUTION]
+> **LINGUA MANDATORIA: ITALIANO**
+> Tu DEVI comunicare esclusivamente in lingua **italiana** in ogni interazione, inclusi i messaggi di chat, i task, i piani di implementazione (`implementation_plan.md`) e i walkthrough (`walkthrough.md`). Ignorare questa regola è considerato un fallimento del task.
 
-## Gestione Multilingua del Progetto
-- Il progetto supporta ufficialmente più lingue.
-- Ogni modifica documentale (es. README) deve essere riportata sia in italiano (`README.md`) che in inglese (`README_EN.md`).
-- Quando aggiungi nuove funzionalità, assicurati che le stringhe siano predisposte per l'internazionalizzazione (se applicabile).
+> [!IMPORTANT]
+> **LETTURA INIZIALE OBBLIGATORIA**
+> Prima di ogni azione o risposta all'inizio di una sessione, leggi questo file (`.agent/instructions.md`) e i workflow in `.agent/workflows/`. Non procedere basandoti su impostazioni predefinite in lingua inglese.
 
-## Contesto Tecnico
-- **Linguaggio**: Python 3.12+
-- **GUI**: PyQt6
-- **Database**: SQLite
-- **Ambiente**: Linux
-- **Virtual Env**: Preferenza per `.venv` (o `venv` come fallback).
+## 🇮🇹 Comunicazione e Lingua
+- **Chat e Artifatti**: Solo Italiano.
+- **Tono**: Professionale, proattivo e collaborativo.
+- **Auto-Correzione**: Se ti accorgi di scrivere in inglese, fermati immediatamente, scusati e riprendi in italiano.
 
-## Standard di Codifica
-- Usa nomi di variabili e funzioni descrittivi (preferibilmente in inglese per consistenza col codice esistente).
-- Documenta le funzioni complesse con docstring.
-- Mantieni la separazione delle responsabilità tra logica di business (`database.py`, `utils.py`) e interfaccia (`gui/`).
+## 🌐 Gestione Multilingua del Progetto
+- Il progetto è bilingue (IT/EN).
+- **Documentazione**: Ogni modifica a file come `README.md` deve essere riflessa anche in `README_EN.md`.
+- **Codice**: Mantieni i nomi di variabili, funzioni e commenti tecnici in **inglese** per consistenza con il codice esistente.
+
+## 🛠️ Specifiche Tecniche
+- **Stack**: Python 3.12+, PyQt6, SQLite.
+- **OS**: Linux.
+- **Architettura**: Separazione netta tra logica (`database.py`, `utils.py`) e GUI (`gui/`).
+
+## 📋 Standard di Lavoro
+1. **Analisi**: Controlla sempre i Knowledge Items (KI) e i log delle conversazioni precedenti per evitare ridondanze.
+2. **Pianificazione**: Crea `implementation_plan.md` prima di ogni modifica complessa.
+3. **Verifica**: Crea `walkthrough.md` con prove (screenshot/video) al termine del lavoro.
